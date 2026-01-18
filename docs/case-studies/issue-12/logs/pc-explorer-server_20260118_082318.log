@@ -1,0 +1,17 @@
+2026-01-18 08:23:18,229 - INFO - ============================================================
+2026-01-18 08:23:18,230 - INFO - PC Explorer USB Server - Starting
+2026-01-18 08:23:18,230 - INFO - ============================================================
+2026-01-18 08:23:18,231 - INFO - Startup time: 2026-01-18T08:23:18.231562
+2026-01-18 08:23:18,232 - INFO - Python version: 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+2026-01-18 08:23:18,232 - INFO - Platform: win32
+2026-01-18 08:23:18,232 - INFO - Frozen (exe): True
+2026-01-18 08:23:18,233 - INFO - Executable: I:\Загрузки\Mobile to pc\pc-explorer-server.exe
+2026-01-18 08:23:18,233 - INFO - Bundle dir: C:\Users\Admin-1\AppData\Local\Temp\_MEI110162
+2026-01-18 08:23:18,233 - INFO - Working directory: I:\Загрузки\Mobile to pc
+2026-01-18 08:23:18,233 - INFO - Log file: I:\Загрузки\Mobile to pc\logs\pc-explorer-server_20260118_082318.log
+2026-01-18 08:23:18,234 - INFO - Mode: USB
+2026-01-18 08:23:18,234 - INFO - Verbose: False
+2026-01-18 08:23:18,234 - INFO - ------------------------------------------------------------
+2026-01-18 08:23:18,267 - INFO - Loaded libusb backend from: C:\Users\Admin-1\AppData\Local\Temp\_MEI110162\libusb-1.0.dll
+2026-01-18 08:23:18,268 - INFO - Starting in USB mode
+2026-01-18 08:23:18,269 - INFO - Waiting for USB device...

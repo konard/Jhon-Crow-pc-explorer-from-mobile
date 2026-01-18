@@ -150,6 +150,32 @@ logger = logging.getLogger(__name__)
 # Chunk size for file transfers
 CHUNK_SIZE = 32 * 1024  # 32KB
 
+# Android vendor IDs for different manufacturers
+# The server will search for any of these to find Android devices
+ANDROID_VENDOR_IDS = {
+    0x18D1: "Google",
+    0x04E8: "Samsung",
+    0x2717: "Xiaomi",
+    0x12D1: "Huawei",
+    0x2A70: "OnePlus",
+    0x1004: "LG",
+    0x0FCE: "Sony",
+    0x0BB4: "HTC",
+    0x22B8: "Motorola",
+    0x0489: "Foxconn (various)",
+    0x05C6: "Qualcomm (various)",
+    0x1949: "Amazon",
+    0x2916: "Yota",
+    0x0E8D: "MediaTek (various)",
+    0x1782: "Spreadtrum (various)",
+    0x19D2: "ZTE",
+    0x2B4C: "Vivo",
+    0x2A45: "Meizu",
+    0x1EBF: "OPPO",
+    0x0B05: "ASUS",
+    0x29A9: "Lenovo",
+}
+
 
 class UsbServer:
     """USB server that handles communication with the Android app."""
@@ -248,12 +274,41 @@ class UsbServer:
             self._start_simulation_mode()
             return
 
+        # Track last log message to avoid spamming
+        last_search_log_time = 0
+        search_log_interval = 30  # Log search status every 30 seconds
+
         while self.running:
-            # Find Android device
-            # Note: Vendor/Product IDs vary by device manufacturer
-            # This is a simplified example
+            # Find Android device - search for all known Android vendor IDs
+            device = None
+            found_vendor = None
+
             try:
-                device = usb.core.find(idVendor=0x18D1)  # Google's vendor ID
+                # First, try to find any known Android device
+                for vendor_id, vendor_name in ANDROID_VENDOR_IDS.items():
+                    device = usb.core.find(idVendor=vendor_id)
+                    if device is not None:
+                        found_vendor = vendor_name
+                        break
+
+                # If no known vendor found, list all connected USB devices for debugging
+                current_time = time.time()
+                if device is None and (current_time - last_search_log_time) >= search_log_interval:
+                    last_search_log_time = current_time
+                    all_devices = list(usb.core.find(find_all=True))
+                    if all_devices:
+                        logger.info(f"Searching for Android device... Found {len(all_devices)} USB device(s):")
+                        for dev in all_devices:
+                            vendor_name = ANDROID_VENDOR_IDS.get(dev.idVendor, "Unknown")
+                            logger.info(f"  - Vendor: 0x{dev.idVendor:04X} ({vendor_name}), "
+                                       f"Product: 0x{dev.idProduct:04X}")
+                        logger.info("Hint: Make sure your Android device is connected and has USB debugging enabled")
+                        logger.info("Hint: You may need to authorize USB debugging on your Android device")
+                        logger.info("Hint: If using a non-standard device, try --simulate mode instead")
+                    else:
+                        logger.info("Searching for Android device... No USB devices found")
+                        logger.info("Hint: Check USB cable connection and try a different port")
+
             except usb.core.NoBackendError:
                 logger.error("Lost USB backend connection")
                 break
@@ -262,7 +317,8 @@ class UsbServer:
                 time.sleep(1)
                 continue
 
-            logger.info(f"Found device: {device}")
+            logger.info(f"Found {found_vendor} device: VendorID=0x{device.idVendor:04X}, "
+                       f"ProductID=0x{device.idProduct:04X}")
 
             try:
                 # Detach kernel driver if necessary
@@ -605,10 +661,20 @@ def main():
     if args.simulate:
         print("Running in SIMULATION mode (TCP socket)")
         print("Connect Android device via ADB:")
-        print("  adb forward tcp:5555 tcp:5555")
+        print("  1. Enable USB debugging on your Android device")
+        print("  2. Connect phone to PC via USB")
+        print("  3. Run: adb forward tcp:5555 tcp:5555")
+        print("  4. Open the Android app and press Connect")
     else:
         print("Running in USB mode")
         print("Connect Android device via USB cable")
+        print()
+        print("Supported manufacturers: Samsung, Google, Xiaomi, Huawei, OnePlus,")
+        print("  LG, Sony, HTC, Motorola, ZTE, Vivo, OPPO, ASUS, Lenovo, and more")
+        print()
+        print("IMPORTANT: USB direct mode has known limitations!")
+        print("If connection fails, try simulation mode instead:")
+        print("  pc-explorer-server.exe --simulate")
 
     print()
     print("Press Ctrl+C to stop the server")
