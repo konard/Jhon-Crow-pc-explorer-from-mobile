@@ -298,6 +298,53 @@ def remove_port_forward(adb_path: Path, local_port: int = 5555) -> bool:
     return success
 
 
+def cleanup_adb_port(adb_path: Path, port: int = 5555) -> bool:
+    """
+    Clean up any existing ADB port forwarding on a specific port.
+
+    This function removes any existing 'adb forward' rules that may be
+    occupying the port, allowing the TCP server to bind to it.
+
+    This is important because:
+    - 'adb forward tcp:5555 tcp:5555' causes ADB to listen on port 5555
+    - If this is active, the Python server cannot bind to port 5555
+    - Calling this cleanup before starting the server frees the port
+
+    Args:
+        adb_path: Path to the ADB executable.
+        port: The port to clean up.
+
+    Returns:
+        True if cleanup was performed (or no cleanup needed), False on error.
+    """
+    try:
+        # List all current forwards
+        success, stdout, stderr = run_adb_command(adb_path, ['forward', '--list'], timeout=10)
+
+        if not success:
+            logger.debug(f"Could not list forwards: {stderr}")
+            return True  # If we can't list, just continue
+
+        # Check if our port is in the list
+        port_pattern = f'tcp:{port}'
+        if port_pattern in stdout:
+            logger.info(f"Found existing ADB forward on port {port}, removing it...")
+            remove_success = remove_port_forward(adb_path, port)
+            if remove_success:
+                logger.info(f"Successfully removed existing forward on port {port}")
+                return True
+            else:
+                logger.warning(f"Failed to remove existing forward on port {port}")
+                return False
+        else:
+            logger.debug(f"No existing ADB forward found on port {port}")
+            return True
+
+    except Exception as e:
+        logger.warning(f"Error during ADB port cleanup: {e}")
+        return True  # Continue anyway, let the server try to bind
+
+
 def get_device_model(adb_path: Path, serial: Optional[str] = None) -> Optional[str]:
     """
     Get the model name of the connected device.

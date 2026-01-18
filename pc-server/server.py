@@ -41,7 +41,8 @@ from file_handler import FileHandler
 from adb_helper import (
     find_adb_executable, auto_setup_adb_forwarding,
     list_devices, get_device_model, AdbConnection,
-    check_adb_device_ready, auto_setup_adb_reverse, remove_reverse_forward
+    check_adb_device_ready, auto_setup_adb_reverse, remove_reverse_forward,
+    cleanup_adb_port
 )
 
 # Determine if running as frozen exe (PyInstaller)
@@ -509,9 +510,10 @@ class UsbServer:
         Start TCP server and set up ADB reverse forwarding.
 
         This is the correct approach for ADB mode:
-        1. First, bind the TCP server to port 5555 on the PC
-        2. Then, set up 'adb reverse' to forward phone's port 5555 to PC's port 5555
-        3. Android app connects to localhost:5555 on phone -> forwarded to PC server
+        1. First, clean up any existing ADB forwards that may be blocking the port
+        2. Then, bind the TCP server to port 5555 on the PC
+        3. Finally, set up 'adb reverse' to forward phone's port 5555 to PC's port 5555
+        4. Android app connects to localhost:5555 on phone -> forwarded to PC server
 
         This avoids the port conflict that occurs with 'adb forward', where ADB
         also tries to bind to port 5555 on the PC.
@@ -520,7 +522,15 @@ class UsbServer:
 
         logger.info("Starting TCP server on port 5555 (ADB reverse mode)")
 
-        # Step 1: Create and bind the TCP server first
+        # Step 0: Clean up any existing ADB port forwards that may be blocking port 5555
+        # This is important because if the user (or a previous server run) executed
+        # 'adb forward tcp:5555 tcp:5555', ADB will be listening on port 5555 and
+        # our server won't be able to bind to it
+        if self.adb_path:
+            logger.info("Checking for existing ADB port forwards...")
+            cleanup_adb_port(self.adb_path, 5555)
+
+        # Step 1: Create and bind the TCP server
         try:
             self.sim_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sim_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -529,6 +539,7 @@ class UsbServer:
             logger.info("TCP server bound to localhost:5555")
         except OSError as e:
             if e.errno == 10013 or "permission" in str(e).lower():
+                logger.error(f"Failed to bind to port 5555: {e}")
                 logger.error("Port 5555 is blocked or in use by another application")
                 self._print_port_conflict_guide()
             else:
