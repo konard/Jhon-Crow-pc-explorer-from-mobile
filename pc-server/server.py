@@ -779,16 +779,26 @@ class UsbServer:
                     logger.warning("Invalid packet received")
                     continue
 
+                logger.info(f"Received command: {Command(packet.command).name} ({len(data)} bytes)")
+
                 # Handle packet
                 response = self._handle_packet(packet)
                 if response:
-                    self._send_data(response.to_bytes())
+                    response_bytes = response.to_bytes()
+                    logger.info(f"Sending response: {Command(response.command).name} ({len(response_bytes)} bytes)")
+                    self._send_data(response_bytes)
+                    logger.info("Response sent successfully")
 
             except ConnectionResetError:
-                logger.info("Connection reset")
+                logger.info("Connection reset by client")
+                break
+            except socket.timeout:
+                logger.warning("Socket timeout while handling connection")
                 break
             except Exception as e:
                 logger.error(f"Error handling packet: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
 
     def _receive_data(self) -> Optional[bytes]:
         """Receive data from the connection."""
@@ -798,8 +808,11 @@ class UsbServer:
             try:
                 # First receive header to get payload length
                 header = self.sim_conn.recv(10)
+                if len(header) == 0:
+                    logger.info("Connection closed by client (received 0 bytes)")
+                    return None
                 if len(header) < 10:
-                    logger.debug(f"Incomplete header received: {len(header)} bytes")
+                    logger.warning(f"Incomplete header received: {len(header)} bytes (expected 10)")
                     return None
 
                 payload_len = int.from_bytes(header[6:10], 'little')
@@ -810,7 +823,7 @@ class UsbServer:
                 while remaining > 0:
                     chunk = self.sim_conn.recv(min(remaining, 4096))
                     if not chunk:
-                        logger.debug("Connection closed during receive")
+                        logger.warning("Connection closed during receive (incomplete packet)")
                         return None
                     data += chunk
                     remaining -= len(chunk)
@@ -818,7 +831,11 @@ class UsbServer:
                 logger.debug(f"Received {len(data)} bytes via TCP")
                 return data
             except socket.timeout:
-                logger.debug("Socket timeout during receive")
+                # This is expected when waiting for data; don't log at warning level
+                logger.debug("Socket timeout during receive (waiting for data)")
+                return None
+            except socket.error as e:
+                logger.warning(f"Socket error during receive: {e}")
                 return None
         else:
             try:
@@ -832,9 +849,16 @@ class UsbServer:
         """Send data through the connection."""
         # Use sim_conn presence to determine if we're in TCP mode (ADB or simulation)
         if self.sim_conn is not None:
-            logger.debug(f"Sending {len(data)} bytes via TCP")
-            self.sim_conn.sendall(data)
-            logger.debug("TCP data sent successfully")
+            try:
+                logger.debug(f"Sending {len(data)} bytes via TCP")
+                self.sim_conn.sendall(data)
+                logger.debug("TCP data sent successfully")
+            except socket.timeout:
+                logger.error("Socket timeout while sending data")
+                raise
+            except socket.error as e:
+                logger.error(f"Socket error while sending data: {e}")
+                raise
         else:
             logger.debug(f"Sending {len(data)} bytes via USB")
             self.usb_device.write(self.usb_endpoint_out, data, timeout=5000)
@@ -887,6 +911,7 @@ class UsbServer:
         """Handle handshake request."""
         client_info = packet.payload.decode("utf-8")
         logger.info(f"Handshake from: {client_info}")
+        logger.info("Sending handshake response: PCEX-Server-1.0")
         return Packet(
             command=Command.RESPONSE_OK,
             payload=b"PCEX-Server-1.0"
