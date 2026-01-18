@@ -13,7 +13,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val TAG = "ConnectionProvider"
-private const val PREFS_NAME = "connection_settings"
+// Use the same SharedPreferences file as SettingsViewModel to ensure settings sync
+private const val PREFS_NAME = "settings"
 private const val KEY_CONNECTION_MODE = "connection_mode"
 private const val KEY_WIFI_HOST = "wifi_host"
 private const val KEY_WIFI_PORT = "wifi_port"
@@ -108,7 +109,8 @@ class ConnectionProvider @Inject constructor(
             }
             ConnectionMode.TCP_ADB -> {
                 Logger.d(TAG, "Using TCP connection repository (ADB mode)")
-                tcpRepository.configure(host = "localhost", port = 5555)
+                // Use 127.0.0.1 instead of "localhost" to avoid DNS resolution issues
+                tcpRepository.configure(host = "127.0.0.1", port = 5555)
                 tcpRepository
             }
             ConnectionMode.TCP_WIFI -> {
@@ -121,7 +123,8 @@ class ConnectionProvider @Inject constructor(
             ConnectionMode.AUTO -> {
                 // Default to TCP_ADB for auto mode
                 Logger.d(TAG, "AUTO mode: defaulting to TCP connection (ADB)")
-                tcpRepository.configure(host = "localhost", port = 5555)
+                // Use 127.0.0.1 instead of "localhost" to avoid DNS resolution issues
+                tcpRepository.configure(host = "127.0.0.1", port = 5555)
                 tcpRepository
             }
         }

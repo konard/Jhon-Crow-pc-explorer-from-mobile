@@ -1,0 +1,26 @@
+2026-01-18 13:12:55,001 - INFO - ============================================================
+2026-01-18 13:12:55,002 - INFO - PC Explorer USB Server - Starting
+2026-01-18 13:12:55,003 - INFO - ============================================================
+2026-01-18 13:12:55,003 - INFO - Startup time: 2026-01-18T13:12:55.003030
+2026-01-18 13:12:55,003 - INFO - Python version: 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+2026-01-18 13:12:55,003 - INFO - Platform: win32
+2026-01-18 13:12:55,004 - INFO - Frozen (exe): True
+2026-01-18 13:12:55,004 - INFO - Executable: I:\Загрузки\Mobile to pc\pc-explorer-server.exe
+2026-01-18 13:12:55,004 - INFO - Bundle dir: C:\Users\Admin-1\AppData\Local\Temp\_MEI94322
+2026-01-18 13:12:55,005 - INFO - Working directory: I:\Загрузки\Mobile to pc
+2026-01-18 13:12:55,005 - INFO - Log file: I:\Загрузки\Mobile to pc\logs\pc-explorer-server_20260118_131255.log
+2026-01-18 13:12:55,005 - INFO - Mode: auto
+2026-01-18 13:12:55,005 - INFO - Verbose: False
+2026-01-18 13:12:55,006 - INFO - ADB found: I:\Загрузки\Mobile to pc\platform-tools\adb.exe
+2026-01-18 13:12:55,006 - INFO - ------------------------------------------------------------
+2026-01-18 13:12:55,036 - INFO - Auto-detecting connection mode...
+2026-01-18 13:12:55,038 - INFO - Found ADB at: I:\Загрузки\Mobile to pc\platform-tools\adb.exe
+2026-01-18 13:12:55,039 - INFO - Using ADB: I:\Загрузки\Mobile to pc\platform-tools\adb.exe
+2026-01-18 13:12:55,263 - INFO - ADB device check: Device ready: DUA-L22
+2026-01-18 13:12:55,264 - INFO - Starting TCP server on port 5555 (ADB reverse mode)
+2026-01-18 13:12:55,265 - INFO - Checking for existing ADB port forwards...
+2026-01-18 13:12:55,303 - INFO - TCP server bound to localhost:5555
+2026-01-18 13:12:55,566 - INFO - ADB reverse forwarding set up: device:5555 -> localhost:5555
+2026-01-18 13:12:55,568 - INFO - ADB reverse forwarding: ADB reverse forwarding ready for DUA-L22
+2026-01-18 13:12:55,569 - INFO - Waiting for Android app to connect...
+2026-01-18 13:12:55,570 - INFO - On your phone, the app should connect to localhost:5555

@@ -434,7 +434,113 @@ When adding network/socket functionality to an Android app, always ensure:
 
 ---
 
+## Addendum: ECONNREFUSED Port 0 Error (2026-01-18 - User Report #3)
+
+### Error Reported
+
+User reported new error after testing PR #17 (with INTERNET permission fix):
+
+**Phone Error:** `failed to connect to localhost/127.0.0.1 (port 0) from /127.0.0.1 (port 55356) after 5000ms: isConnected failed: ECONNREFUSED (Connection refused)`
+
+### Key Observation
+
+The error message shows **port 0** as the destination port, which indicates the socket address was not properly configured or DNS resolution of "localhost" failed on the Android device.
+
+### PC Server Logs (User Report #3)
+
+Four new log files were provided showing the server was working correctly:
+- `logs/user-report-20260118-econnrefused/pc-explorer-server_20260118_131058.log`
+- `logs/user-report-20260118-econnrefused/pc-explorer-server_20260118_131211.log`
+- `logs/user-report-20260118-econnrefused/pc-explorer-server_20260118_131255.log`
+- `logs/user-report-20260118-econnrefused/pc-explorer-server_20260118_131310.log`
+
+Example server log:
+```
+2026-01-18 13:13:11,182 - INFO - Starting TCP server on port 5555 (ADB reverse mode)
+2026-01-18 13:13:11,221 - INFO - TCP server bound to localhost:5555
+2026-01-18 13:13:11,486 - INFO - ADB reverse forwarding set up: device:5555 -> localhost:5555
+2026-01-18 13:13:11,488 - INFO - Waiting for Android app to connect...
+```
+
+### Root Cause Analysis
+
+**Issue 1: DNS Resolution of "localhost"**
+
+The `InetSocketAddress` constructor with a hostname (like "localhost") performs DNS resolution. On some Android devices, "localhost" may not resolve correctly, resulting in an unresolved address with port 0.
+
+According to [Android InetSocketAddress documentation](https://developer.android.com/reference/java/net/InetSocketAddress):
+> If resolution fails then the address is said to be **unresolved** but can still be used on some circumstances like connecting through a proxy.
+
+**Issue 2: SharedPreferences Mismatch**
+
+The `SettingsViewModel` uses SharedPreferences file named `"settings"` while `ConnectionProvider` uses `"connection_settings"`. This means settings changes made in the UI don't propagate to the actual connection implementation.
+
+```kotlin
+// SettingsViewModel.kt
+private val prefs = context.getSharedPreferences("settings", ...)
+
+// ConnectionProvider.kt (BEFORE FIX)
+private const val PREFS_NAME = "connection_settings"  // WRONG!
+```
+
+### Fixes Applied
+
+**Fix 1: Use IP Address Instead of Hostname**
+
+Changed `DEFAULT_HOST` from `"localhost"` to `"127.0.0.1"` in `TcpConnectionRepositoryImpl.kt`:
+
+```kotlin
+companion object {
+    // Use IP address directly to avoid DNS resolution issues
+    private const val DEFAULT_HOST = "127.0.0.1"  // Was "localhost"
+    private const val DEFAULT_PORT = 5555
+}
+```
+
+Also added normalization in `configure()` method to convert any "localhost" input to "127.0.0.1".
+
+**Fix 2: Sync SharedPreferences Files**
+
+Changed `ConnectionProvider` to use the same SharedPreferences file as `SettingsViewModel`:
+
+```kotlin
+// ConnectionProvider.kt (AFTER FIX)
+private const val PREFS_NAME = "settings"  // Match SettingsViewModel
+```
+
+**Fix 3: Added Validation and Logging**
+
+Added port validation to prevent port 0 connections:
+```kotlin
+if (port !in 1..65535) {
+    val message = "Invalid port configuration: $port. Please check settings."
+    Logger.e(TAG, message)
+    return@withContext Result.failure(Exception(message))
+}
+```
+
+Added logging to track socket address state:
+```kotlin
+Logger.d(TAG, "Socket address created: ${socketAddress.hostString}:${socketAddress.port}, unresolved=${socketAddress.isUnresolved}")
+```
+
+### References
+
+- [InetSocketAddress (Android Developers)](https://developer.android.com/reference/java/net/InetSocketAddress) - Documentation on unresolved addresses
+- [InetSocketAddress source code (AOSP)](https://android.googlesource.com/platform/libcore/+/fe39951/luni/src/main/java/java/net/InetSocketAddress.java) - Implementation details
+
+### Lesson Learned
+
+When creating TCP connections on Android:
+1. **Use IP addresses directly** (e.g., `127.0.0.1`) instead of hostnames (e.g., `localhost`) to avoid DNS resolution issues
+2. **Ensure SharedPreferences consistency** - all components using shared settings must use the same SharedPreferences file
+3. **Add validation** for port numbers before attempting connections
+4. **Log the InetSocketAddress state** to help debug unresolved address issues
+
+---
+
 *Case study compiled on 2026-01-18*
 *Updated with test failure analysis on 2026-01-18*
 *Updated with socket permission denied analysis on 2026-01-18*
+*Updated with ECONNREFUSED/port 0 analysis on 2026-01-18*
 *Related to Issue #14, PR #15, and PR #17*

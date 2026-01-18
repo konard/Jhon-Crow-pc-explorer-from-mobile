@@ -37,7 +37,9 @@ private const val TAG = "TcpConnectionRepo"
 class TcpConnectionRepositoryImpl : UsbConnectionRepository {
 
     companion object {
-        private const val DEFAULT_HOST = "localhost"
+        // Use IP address directly to avoid DNS resolution issues on some Android devices
+        // where "localhost" may not resolve correctly
+        private const val DEFAULT_HOST = "127.0.0.1"
         private const val DEFAULT_PORT = 5555
         private const val CONNECT_TIMEOUT_MS = 5000
         private const val READ_TIMEOUT_MS = 10000
@@ -56,23 +58,52 @@ class TcpConnectionRepositoryImpl : UsbConnectionRepository {
     /**
      * Configure the connection parameters.
      *
-     * @param host The host to connect to (default: localhost for ADB reverse)
+     * @param host The host to connect to (default: 127.0.0.1 for ADB reverse)
      * @param port The port to connect to (default: 5555)
      */
     fun configure(host: String = DEFAULT_HOST, port: Int = DEFAULT_PORT) {
-        this.host = host
-        this.port = port
+        // Validate port range
+        val validPort = if (port in 1..65535) port else DEFAULT_PORT
+        if (port != validPort) {
+            Logger.w(TAG, "Invalid port $port, using default $DEFAULT_PORT")
+        }
+
+        // Normalize localhost to 127.0.0.1 to avoid DNS resolution issues
+        val normalizedHost = if (host.equals("localhost", ignoreCase = true)) {
+            Logger.d(TAG, "Normalizing 'localhost' to '127.0.0.1'")
+            "127.0.0.1"
+        } else {
+            host
+        }
+
+        this.host = normalizedHost
+        this.port = validPort
+        Logger.d(TAG, "Configured TCP connection: $normalizedHost:$validPort")
     }
 
     override suspend fun connect(): Result<Unit> = withContext(Dispatchers.IO) {
         _connectionState.value = ConnectionState.Connecting
+
+        // Validate configuration before connecting
+        if (port !in 1..65535) {
+            val message = "Invalid port configuration: $port. Please check settings."
+            Logger.e(TAG, message)
+            _connectionState.value = ConnectionState.Error(message)
+            return@withContext Result.failure(Exception(message))
+        }
+
         Logger.i(TAG, "Connecting to $host:$port via TCP...")
+        Logger.d(TAG, "Creating socket with timeout: connect=${CONNECT_TIMEOUT_MS}ms, read=${READ_TIMEOUT_MS}ms")
 
         try {
+            // Create socket address - log for debugging
+            val socketAddress = InetSocketAddress(host, port)
+            Logger.d(TAG, "Socket address created: ${socketAddress.hostString}:${socketAddress.port}, unresolved=${socketAddress.isUnresolved}")
+
             // Create socket and connect
             socket = Socket().apply {
                 soTimeout = READ_TIMEOUT_MS
-                connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+                connect(socketAddress, CONNECT_TIMEOUT_MS)
             }
 
             inputStream = socket?.getInputStream()
