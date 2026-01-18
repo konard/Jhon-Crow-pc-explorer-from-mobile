@@ -1,0 +1,81 @@
+2026-01-18 10:09:55,113 - INFO - ============================================================
+2026-01-18 10:09:55,114 - INFO - PC Explorer USB Server - Starting
+2026-01-18 10:09:55,114 - INFO - ============================================================
+2026-01-18 10:09:55,115 - INFO - Startup time: 2026-01-18T10:09:55.115319
+2026-01-18 10:09:55,115 - INFO - Python version: 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+2026-01-18 10:09:55,115 - INFO - Platform: win32
+2026-01-18 10:09:55,116 - INFO - Frozen (exe): True
+2026-01-18 10:09:55,116 - INFO - Executable: I:\Загрузки\Mobile to pc\pc-explorer-server.exe
+2026-01-18 10:09:55,116 - INFO - Bundle dir: C:\Users\Admin-1\AppData\Local\Temp\_MEI35722
+2026-01-18 10:09:55,117 - INFO - Working directory: I:\Загрузки\Mobile to pc
+2026-01-18 10:09:55,117 - INFO - Log file: I:\Загрузки\Mobile to pc\logs\pc-explorer-server_20260118_100955.log
+2026-01-18 10:09:55,117 - INFO - Mode: auto
+2026-01-18 10:09:55,117 - INFO - Verbose: False
+2026-01-18 10:09:55,118 - INFO - ADB found: I:\Загрузки\Mobile to pc\platform-tools\adb.exe
+2026-01-18 10:09:55,118 - INFO - ------------------------------------------------------------
+2026-01-18 10:09:55,149 - INFO - Auto-detecting connection mode...
+2026-01-18 10:09:55,150 - INFO - Found ADB at: I:\Загрузки\Mobile to pc\platform-tools\adb.exe
+2026-01-18 10:09:55,151 - INFO - Using ADB: I:\Загрузки\Mobile to pc\platform-tools\adb.exe
+2026-01-18 10:09:59,259 - INFO - ADB setup failed: Device connected but not authorized. Check your phone for USB debugging prompt.
+2026-01-18 10:09:59,261 - INFO - Trying USB mode...
+2026-01-18 10:09:59,291 - INFO - Loaded libusb backend from: C:\Users\Admin-1\AppData\Local\Temp\_MEI35722\libusb-1.0.dll
+2026-01-18 10:09:59,292 - INFO - Starting in USB mode
+2026-01-18 10:09:59,293 - INFO - Waiting for USB device...
+2026-01-18 10:09:59,379 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:09:59,381 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:00,448 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:00,449 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:01,518 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:01,520 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:02,581 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:02,582 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:03,659 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:03,660 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:04,736 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:04,738 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:05,812 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:05,815 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:06,893 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:06,895 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:07,970 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:07,972 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:09,052 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:09,052 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:10,129 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:10,129 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:11,209 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:11,211 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:12,291 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:12,292 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:13,360 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:13,361 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:14,428 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:14,430 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:15,498 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:15,499 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:16,571 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:16,573 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:17,644 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:17,648 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:18,729 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:18,731 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:19,796 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:19,798 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:20,863 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:20,865 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:21,932 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:21,933 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:23,007 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:23,008 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:24,075 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:24,076 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:25,157 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:25,159 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:26,234 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:26,236 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:27,299 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:27,300 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:28,378 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:28,379 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)
+2026-01-18 10:10:29,452 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 10:10:29,453 - ERROR - USB error: [Errno 13] Access denied (insufficient permissions)

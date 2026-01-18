@@ -1,0 +1,30 @@
+2026-01-18 10:10:40,321 - INFO - ============================================================
+2026-01-18 10:10:40,322 - INFO - PC Explorer USB Server - Starting
+2026-01-18 10:10:40,322 - INFO - ============================================================
+2026-01-18 10:10:40,322 - INFO - Startup time: 2026-01-18T10:10:40.322970
+2026-01-18 10:10:40,322 - INFO - Python version: 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+2026-01-18 10:10:40,323 - INFO - Platform: win32
+2026-01-18 10:10:40,323 - INFO - Frozen (exe): True
+2026-01-18 10:10:40,323 - INFO - Executable: I:\Загрузки\Mobile to pc\pc-explorer-server.exe
+2026-01-18 10:10:40,324 - INFO - Bundle dir: C:\Users\Admin-1\AppData\Local\Temp\_MEI81162
+2026-01-18 10:10:40,324 - INFO - Working directory: I:\Загрузки\Mobile to pc
+2026-01-18 10:10:40,324 - INFO - Log file: I:\Загрузки\Mobile to pc\logs\pc-explorer-server_20260118_101040.log
+2026-01-18 10:10:40,324 - INFO - Mode: auto
+2026-01-18 10:10:40,324 - INFO - Verbose: False
+2026-01-18 10:10:40,325 - INFO - ADB found: I:\Загрузки\Mobile to pc\platform-tools\adb.exe
+2026-01-18 10:10:40,325 - INFO - ------------------------------------------------------------
+2026-01-18 10:10:40,358 - INFO - Auto-detecting connection mode...
+2026-01-18 10:10:40,359 - INFO - Found ADB at: I:\Загрузки\Mobile to pc\platform-tools\adb.exe
+2026-01-18 10:10:40,360 - INFO - Using ADB: I:\Загрузки\Mobile to pc\platform-tools\adb.exe
+2026-01-18 10:10:40,577 - INFO - ADB port forwarding set up: localhost:5555 -> device:5555
+2026-01-18 10:10:40,578 - INFO - ADB setup successful: ADB forwarding ready for DUA-L22
+2026-01-18 10:10:40,579 - INFO - Starting TCP server on port 5555
+2026-01-18 10:10:40,581 - ERROR - Unexpected error: [WinError 10013] Сделана попытка доступа к сокету методом, запрещенным правами доступа
+Traceback (most recent call last):
+  File "server.py", line 859, in main
+  File "server.py", line 226, in start
+  File "server.py", line 240, in _start_auto_mode
+  File "server.py", line 290, in _start_tcp_server
+PermissionError: [WinError 10013] Сделана попытка доступа к сокету методом, запрещенным правами доступа
+2026-01-18 10:10:40,584 - INFO - Server stopped
+2026-01-18 10:10:40,585 - INFO - ============================================================
