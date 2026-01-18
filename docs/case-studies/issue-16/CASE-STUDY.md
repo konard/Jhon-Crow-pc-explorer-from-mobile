@@ -363,6 +363,78 @@ Updated `SettingsViewModelTest.kt` to:
 
 ---
 
+## Addendum: Socket Permission Denied Error (2026-01-18 - User Report #2)
+
+### Error Reported
+
+User reported new error after testing PR #17:
+
+**Phone Error:** `connection failed: socket failed: EACCES (Permission denied). Make sure the PC server is running and ADB is connected.`
+
+### PC Server Logs (User Report #2)
+
+Two new log files were provided:
+- `logs/user-report-20260118/pc-explorer-server_20260118_125220.log`
+- `logs/user-report-20260118/pc-explorer-server_20260118_124822.log`
+
+Both logs show the server is working correctly:
+```
+2026-01-18 12:52:20,884 - INFO - Starting TCP server on port 5555 (ADB reverse mode)
+2026-01-18 12:52:20,921 - INFO - TCP server bound to localhost:5555
+2026-01-18 12:52:21,176 - INFO - ADB reverse forwarding set up: device:5555 -> localhost:5555
+2026-01-18 12:52:21,177 - INFO - ADB reverse forwarding: ADB reverse forwarding ready for DUA-L22
+2026-01-18 12:52:21,178 - INFO - Waiting for Android app to connect...
+```
+
+### Root Cause Analysis
+
+The `EACCES (Permission denied)` error when creating a socket on Android is caused by **missing the `android.permission.INTERNET` permission** in the AndroidManifest.xml.
+
+**Evidence:**
+1. The error message `socket failed: EACCES` is the standard Android error when an app attempts to create network sockets without the INTERNET permission
+2. The AndroidManifest.xml was checked and did not contain the INTERNET permission
+3. This is a well-documented Android behavior - see references below
+
+### References
+
+- [GitHub Issue: java.net.socketexception socket failed eacces](https://github.com/gturri/aXMLRPC/issues/54)
+- [GitHub Issue: Missing android.permission.INTERNET](https://github.com/ConnectSDK/Simple-Photo-Share-Android/issues/1)
+- [GitHub Issue: appium-espresso-driver EACCES](https://github.com/appium/appium-espresso-driver/issues/234)
+
+### Fix Applied
+
+Added the following permissions to `app/src/main/AndroidManifest.xml`:
+
+```xml
+<!-- Network permissions for TCP socket connections (ADB reverse mode) -->
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+```
+
+**Why ACCESS_NETWORK_STATE:** This permission is commonly used alongside INTERNET to check network availability before attempting connections, improving error handling.
+
+### Why This Was Missed
+
+The TCP socket implementation (`TcpConnectionRepositoryImpl.kt`) was created but the corresponding AndroidManifest.xml was not updated with the required INTERNET permission. The `TcpConnectionRepositoryImpl.hasPermission()` method incorrectly returned `true` without checking for actual Android network permissions:
+
+```kotlin
+override fun hasPermission(): Boolean {
+    // TCP connections don't require special permissions
+    // ^^^ This comment was incorrect - INTERNET permission IS required
+    return true
+}
+```
+
+### Lesson Learned
+
+When adding network/socket functionality to an Android app, always ensure:
+1. `android.permission.INTERNET` is declared in AndroidManifest.xml
+2. Consider adding `android.permission.ACCESS_NETWORK_STATE` for network state checks
+3. These permissions are "normal" permissions (not dangerous), so they don't require runtime permission requests
+
+---
+
 *Case study compiled on 2026-01-18*
 *Updated with test failure analysis on 2026-01-18*
+*Updated with socket permission denied analysis on 2026-01-18*
 *Related to Issue #14, PR #15, and PR #17*
