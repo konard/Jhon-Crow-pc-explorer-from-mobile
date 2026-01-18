@@ -42,7 +42,7 @@ class BrowserViewModelTest {
         coEvery { fileOperationsUseCase.getDrives() } returns Result.success(listOf("C:"))
         coEvery { listFilesUseCase(any(), any()) } returns Result.success(emptyList())
         coEvery { fileOperationsUseCase.getStorageInfo(any()) } returns Result.success(
-            StorageInfo(1000000, 500000, "C:", "Windows")
+            StorageInfo(totalSpace = 1000000, freeSpace = 500000, driveLetter = "C:", volumeName = "Windows")
         )
     }
 
@@ -294,12 +294,12 @@ class BrowserViewModelTest {
 
         viewModel.setSortOrder(SortBy.NAME)
         advanceUntilIdle()
-        val firstDirection = viewModel.uiState.value.sortOrder.ascending
+        val firstDirection = viewModel.uiState.value.sortOrder.direction
 
         viewModel.setSortOrder(SortBy.NAME)
         advanceUntilIdle()
 
-        assertNotEquals(firstDirection, viewModel.uiState.value.sortOrder.ascending)
+        assertNotEquals(firstDirection, viewModel.uiState.value.sortOrder.direction)
     }
 
     // Selection tests

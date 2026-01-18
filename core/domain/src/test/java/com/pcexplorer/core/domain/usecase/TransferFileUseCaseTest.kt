@@ -24,7 +24,7 @@ class TransferFileUseCaseTest {
 
     @Before
     fun setUp() {
-        transferRepository = mockk()
+        transferRepository = mockk(relaxed = true)
         useCase = TransferFileUseCase(transferRepository)
     }
 

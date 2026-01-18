@@ -23,7 +23,7 @@ class ConnectToDeviceUseCaseTest {
 
     @Before
     fun setUp() {
-        usbConnectionRepository = mockk()
+        usbConnectionRepository = mockk(relaxed = true)
         useCase = ConnectToDeviceUseCase(usbConnectionRepository)
     }
 
