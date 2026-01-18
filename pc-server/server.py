@@ -26,6 +26,7 @@ import time
 import logging
 import argparse
 import threading
+import socket
 from typing import Optional
 from datetime import datetime
 from pathlib import Path
@@ -487,7 +488,7 @@ class UsbServer:
 
     def _start_tcp_server(self) -> None:
         """Start TCP server (used by both ADB and simulation modes)."""
-        import socket
+        # Note: socket is now imported at module level
 
         logger.info("Starting TCP server on port 5555")
         self.sim_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -500,6 +501,7 @@ class UsbServer:
         while self.running:
             try:
                 self.sim_conn, addr = self.sim_socket.accept()
+                self.sim_conn.settimeout(30.0)  # Set timeout to detect dropped connections
                 logger.info(f"Connection from {addr}")
                 self._handle_connection()
             except Exception as e:
@@ -518,7 +520,7 @@ class UsbServer:
         This avoids the port conflict that occurs with 'adb forward', where ADB
         also tries to bind to port 5555 on the PC.
         """
-        import socket
+        # Note: socket is now imported at module level
 
         logger.info("Starting TCP server on port 5555 (ADB reverse mode)")
 
@@ -561,6 +563,9 @@ class UsbServer:
         while self.running:
             try:
                 self.sim_conn, addr = self.sim_socket.accept()
+                # Set socket timeout to detect dropped connections and avoid indefinite blocking.
+                # This is important for ADB reverse mode where the tunnel can become unreliable.
+                self.sim_conn.settimeout(30.0)
                 logger.info(f"Connection from {addr}")
                 self._handle_connection()
             except Exception as e:
@@ -621,7 +626,7 @@ class UsbServer:
 
     def _start_simulation_mode(self) -> None:
         """Start in simulation mode using TCP socket (manual ADB setup required)."""
-        import socket
+        # Note: socket is now imported at module level
 
         logger.info("Starting in simulation mode (TCP)")
         self.sim_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -636,6 +641,7 @@ class UsbServer:
         while self.running:
             try:
                 self.sim_conn, addr = self.sim_socket.accept()
+                self.sim_conn.settimeout(30.0)  # Set timeout to detect dropped connections
                 logger.info(f"Connection from {addr}")
                 self._handle_connection()
             except Exception as e:
@@ -793,25 +799,32 @@ class UsbServer:
                 # First receive header to get payload length
                 header = self.sim_conn.recv(10)
                 if len(header) < 10:
+                    logger.debug(f"Incomplete header received: {len(header)} bytes")
                     return None
 
                 payload_len = int.from_bytes(header[6:10], 'little')
                 remaining = payload_len + 4  # +4 for checksum
+                logger.debug(f"Receiving TCP packet: payload_len={payload_len}, total={10 + remaining}")
 
                 data = header
                 while remaining > 0:
                     chunk = self.sim_conn.recv(min(remaining, 4096))
                     if not chunk:
+                        logger.debug("Connection closed during receive")
                         return None
                     data += chunk
                     remaining -= len(chunk)
 
+                logger.debug(f"Received {len(data)} bytes via TCP")
                 return data
             except socket.timeout:
+                logger.debug("Socket timeout during receive")
                 return None
         else:
             try:
-                return self.usb_device.read(self.usb_endpoint_in, MAX_PACKET_SIZE, timeout=5000)
+                data = self.usb_device.read(self.usb_endpoint_in, MAX_PACKET_SIZE, timeout=5000)
+                logger.debug(f"Received {len(data) if data else 0} bytes via USB")
+                return data
             except Exception:
                 return None
 
@@ -819,9 +832,13 @@ class UsbServer:
         """Send data through the connection."""
         # Use sim_conn presence to determine if we're in TCP mode (ADB or simulation)
         if self.sim_conn is not None:
+            logger.debug(f"Sending {len(data)} bytes via TCP")
             self.sim_conn.sendall(data)
+            logger.debug("TCP data sent successfully")
         else:
+            logger.debug(f"Sending {len(data)} bytes via USB")
             self.usb_device.write(self.usb_endpoint_out, data, timeout=5000)
+            logger.debug("USB data sent successfully")
 
     def _handle_packet(self, packet: Packet) -> Optional[Packet]:
         """Handle a received packet and return response."""
