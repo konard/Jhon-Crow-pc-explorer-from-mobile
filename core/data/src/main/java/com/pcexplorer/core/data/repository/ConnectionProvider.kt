@@ -29,7 +29,8 @@ private const val KEY_WIFI_PORT = "wifi_port"
 class ConnectionProvider @Inject constructor(
     @ApplicationContext private val context: Context,
     private val usbRepository: UsbConnectionRepositoryImpl,
-    private val tcpRepository: TcpConnectionRepositoryImpl
+    private val tcpRepository: TcpConnectionRepositoryImpl,
+    private val tcpServerRepository: TcpServerRepositoryImpl
 ) : UsbConnectionRepository {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -112,6 +113,12 @@ class ConnectionProvider @Inject constructor(
                 // Use 127.0.0.1 instead of "localhost" to avoid DNS resolution issues
                 tcpRepository.configure(host = "127.0.0.1", port = 5555)
                 tcpRepository
+            }
+            ConnectionMode.TCP_FORWARD -> {
+                Logger.d(TAG, "Using TCP server repository (ADB forward fallback mode)")
+                // In forward mode, the Android app acts as a server and PC connects to us
+                // This works on devices where adb reverse tunnel is unidirectional
+                tcpServerRepository
             }
             ConnectionMode.TCP_WIFI -> {
                 val host = getWifiHost()

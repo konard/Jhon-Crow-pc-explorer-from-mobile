@@ -7,6 +7,7 @@ import com.pcexplorer.core.data.local.TransferDao
 import com.pcexplorer.core.data.repository.ConnectionProvider
 import com.pcexplorer.core.data.repository.FileRepositoryImpl
 import com.pcexplorer.core.data.repository.TcpConnectionRepositoryImpl
+import com.pcexplorer.core.data.repository.TcpServerRepositoryImpl
 import com.pcexplorer.core.data.repository.TransferRepositoryImpl
 import com.pcexplorer.core.data.repository.UsbConnectionRepositoryImpl
 import com.pcexplorer.core.domain.repository.FileRepository
@@ -51,6 +52,12 @@ object ConnectionModule {
     @Singleton
     fun provideTcpConnectionRepository(): TcpConnectionRepositoryImpl {
         return TcpConnectionRepositoryImpl()
+    }
+
+    @Provides
+    @Singleton
+    fun provideTcpServerRepository(): TcpServerRepositoryImpl {
+        return TcpServerRepositoryImpl()
     }
 }
 

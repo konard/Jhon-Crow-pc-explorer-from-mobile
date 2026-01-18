@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
@@ -115,6 +116,7 @@ fun SettingsScreen(
                         when (uiState.connectionMode) {
                             ConnectionMode.USB -> "Direct USB (requires driver setup)"
                             ConnectionMode.TCP_ADB -> "USB with ADB (recommended)"
+                            ConnectionMode.TCP_FORWARD -> "ADB Forward (for older devices)"
                             ConnectionMode.TCP_WIFI -> "Wi-Fi (${uiState.wifiHost}:${uiState.wifiPort})"
                             ConnectionMode.AUTO -> "Automatic"
                         }
@@ -125,6 +127,7 @@ fun SettingsScreen(
                         imageVector = when (uiState.connectionMode) {
                             ConnectionMode.USB -> Icons.Filled.Usb
                             ConnectionMode.TCP_ADB -> Icons.Filled.Cable
+                            ConnectionMode.TCP_FORWARD -> Icons.Filled.SwapHoriz
                             ConnectionMode.TCP_WIFI -> Icons.Filled.Wifi
                             ConnectionMode.AUTO -> Icons.Filled.Cable
                         },
@@ -355,6 +358,7 @@ private fun ConnectionModeDialog(
                                 text = when (mode) {
                                     ConnectionMode.USB -> "Direct USB"
                                     ConnectionMode.TCP_ADB -> "USB with ADB (Recommended)"
+                                    ConnectionMode.TCP_FORWARD -> "ADB Forward Mode"
                                     ConnectionMode.TCP_WIFI -> "Wi-Fi"
                                     ConnectionMode.AUTO -> "Automatic"
                                 },
@@ -364,6 +368,7 @@ private fun ConnectionModeDialog(
                                 text = when (mode) {
                                     ConnectionMode.USB -> "Requires driver setup on Windows"
                                     ConnectionMode.TCP_ADB -> "Works with USB debugging enabled"
+                                    ConnectionMode.TCP_FORWARD -> "For older Huawei/Honor devices"
                                     ConnectionMode.TCP_WIFI -> "Connect over Wi-Fi network"
                                     ConnectionMode.AUTO -> "Try ADB first, then USB"
                                 },

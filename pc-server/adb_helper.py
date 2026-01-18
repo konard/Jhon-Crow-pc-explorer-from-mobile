@@ -562,23 +562,22 @@ def check_adb_reverse_supported(adb_path: Path) -> Tuple[bool, str]:
     return True, "adb reverse is supported"
 
 
-def setup_forward_for_server(adb_path: Path, local_port: int = 5555, remote_port: int = 5555) -> Tuple[bool, str]:
+def setup_forward_for_server(adb_path: Path, local_port: int = 5555, remote_port: int = 5556) -> Tuple[bool, str]:
     """
-    Set up ADB forward for server mode (fallback when adb reverse doesn't work).
+    Set up ADB forward for client mode (PC connects to Android).
 
-    In this mode:
-    - The PC server binds to 0.0.0.0:local_port
-    - 'adb forward tcp:remote_port tcp:local_port' creates a tunnel
-    - Android app connects to localhost:remote_port on the phone
-    - Traffic is forwarded to PC's local_port
+    In the new forward mode, roles are reversed:
+    - Android app LISTENS on localhost:remote_port (becomes server)
+    - PC CONNECTS through 'adb forward tcp:local_port tcp:remote_port'
+    - ADB listens on PC's local_port and forwards to phone's remote_port
 
-    This is a fallback for devices where 'adb reverse' doesn't work properly
-    (e.g., older Huawei devices where the tunnel is unidirectional).
+    This works on devices where 'adb reverse' creates a unidirectional tunnel
+    (e.g., Huawei DUA-L22 where Android->PC works but PC->Android doesn't).
 
     Args:
         adb_path: Path to the ADB executable.
-        local_port: Port on the PC where the server is listening.
-        remote_port: Port on the Android device that the app connects to.
+        local_port: Port on the PC to connect through (ADB listens on this).
+        remote_port: Port on the Android device where the app is listening.
 
     Returns:
         Tuple of (success, message)
@@ -586,15 +585,17 @@ def setup_forward_for_server(adb_path: Path, local_port: int = 5555, remote_port
     # First, remove any existing reverse forwarding on the same port
     run_adb_command(adb_path, ['reverse', '--remove', f'tcp:{remote_port}'], timeout=5)
 
-    # Set up forward: connections to device's remote_port forward to PC's local_port
+    # Set up forward: ADB listens on PC's local_port, forwards to phone's remote_port
+    # Command: adb forward tcp:LOCAL tcp:REMOTE
+    # This means: listen on PC's LOCAL port, forward to device's REMOTE port
     success, stdout, stderr = run_adb_command(
         adb_path,
-        ['forward', f'tcp:{remote_port}', f'tcp:{local_port}'],
+        ['forward', f'tcp:{local_port}', f'tcp:{remote_port}'],
         timeout=10
     )
 
     if success:
-        return True, f"ADB forward set up: device:{remote_port} -> PC:{local_port}"
+        return True, f"ADB forward set up: PC:{local_port} -> device:{remote_port}"
     else:
         return False, f"Failed to set up ADB forward: {stderr}"
 

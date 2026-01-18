@@ -28,6 +28,23 @@ enum class ConnectionMode {
     TCP_ADB,
 
     /**
+     * TCP connection via ADB forward (server mode).
+     * The Android app listens on a local port and the PC connects through ADB.
+     *
+     * This mode is a fallback for devices where ADB reverse doesn't work properly
+     * (e.g., older Huawei devices like Honor 7S/DUA-L22 where the reverse tunnel
+     * is unidirectional).
+     *
+     * How it works:
+     * 1. Android app listens on localhost:5556
+     * 2. PC runs "adb forward tcp:5555 tcp:5556" to create tunnel
+     * 3. PC server connects to localhost:5555 (which tunnels to phone's 5556)
+     *
+     * Use this mode when TCP_ADB shows "Read timeout" or "Checksum mismatch".
+     */
+    TCP_FORWARD,
+
+    /**
      * TCP connection via Wi-Fi.
      * Connects directly to the PC's IP address on port 5555.
      *

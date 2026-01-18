@@ -8,6 +8,7 @@ It provides file system access through a custom USB protocol.
 Usage:
     python server.py              # Auto-detect mode (tries ADB first, then USB)
     python server.py --adb        # Use ADB port forwarding (recommended)
+    python server.py --forward    # ADB forward mode (for older Huawei/Honor devices)
     python server.py --usb        # Direct USB mode (requires driver setup)
     python server.py --simulate   # TCP simulation mode (for testing)
 
@@ -18,6 +19,11 @@ Requirements:
 
 The recommended mode is --adb, which uses Android Debug Bridge for communication.
 This works with most Android devices without requiring special driver installation.
+
+For devices where --adb doesn't work (e.g., Huawei DUA-L22/Honor 7S), try --forward mode:
+1. Open the Android app and select "ADB Forward Mode" in Settings
+2. Tap "Connect" on the phone (app will start listening)
+3. Run this server with --forward flag
 """
 
 import sys
@@ -492,25 +498,38 @@ class UsbServer:
 
     def _start_forward_mode(self) -> None:
         """
-        Start in ADB forward mode.
+        Start in ADB forward mode (PC acts as client, Android acts as server).
 
         This is a fallback for devices where 'adb reverse' doesn't work properly.
-        Instead of the phone connecting to localhost (which requires reverse),
-        the server listens on a port that ADB forwards from the phone.
+        The key insight is that 'adb forward' creates a more reliable bidirectional tunnel
+        because ADB acts as a full proxy on both sides.
+
+        In this mode, the roles are reversed:
+        - Android app LISTENS on localhost:5556 (becomes the server)
+        - PC CONNECTS through 'adb forward tcp:5555 tcp:5556' (becomes the client)
+
+        This works on devices like Huawei DUA-L22 where 'adb reverse' creates a
+        unidirectional tunnel (Android -> PC works, but PC -> Android doesn't).
 
         Flow:
-        1. PC server binds to 0.0.0.0:5555 (all interfaces)
-        2. 'adb forward tcp:5555 tcp:5555' is set up
-        3. Android app connects to localhost:5555 on the phone
-        4. Traffic is forwarded through ADB to the PC server
-
-        This works on more devices because 'adb forward' is more reliable than
-        'adb reverse' on older devices (e.g., Huawei DUA-L22).
+        1. Android app must be started first in "ADB Forward Mode" setting
+        2. 'adb forward tcp:5555 tcp:5556' creates tunnel from PC port 5555 to phone port 5556
+        3. PC connects to localhost:5555 (which tunnels to phone's 5556)
+        4. PC sends handshake first (role reversal)
         """
-        logger.info("Starting in ADB forward mode")
+        logger.info("Starting in ADB forward mode (client mode)")
+        logger.info("")
+        logger.info("IMPORTANT: In this mode, the Android app must be started FIRST!")
+        logger.info("On your phone:")
+        logger.info("  1. Open PC Explorer app")
+        logger.info("  2. Go to Settings > Connection mode")
+        logger.info("  3. Select 'ADB Forward Mode'")
+        logger.info("  4. Tap 'Connect' button (app will start listening)")
+        logger.info("  5. Then run this server")
+        logger.info("")
 
         # Check if device is ready
-        success, message, self.adb_path = check_adb_device_ready(5555, 5555)
+        success, message, self.adb_path = check_adb_device_ready(5555, 5556)
 
         if not success:
             logger.error(f"ADB setup failed: {message}")
@@ -524,77 +543,203 @@ class UsbServer:
             return
 
         logger.info(f"ADB device check: {message}")
-        self._start_tcp_server_with_adb_forward()
+        self._connect_via_adb_forward()
 
-    def _start_tcp_server_with_adb_forward(self) -> None:
+    def _connect_via_adb_forward(self) -> None:
         """
-        Start TCP server with ADB forward tunneling.
+        Connect to Android app via ADB forward tunnel (PC acts as client).
 
-        Unlike ADB reverse mode, in forward mode:
-        1. First, set up 'adb forward' to create the tunnel
-        2. Then, the PC server binds to port 5555
-        3. Android app connects to localhost:5555 on the phone
-        4. ADB forwards the connection to PC's port 5555
+        In this mode:
+        1. Android app listens on localhost:5556 on the phone
+        2. 'adb forward tcp:5555 tcp:5556' creates a tunnel
+        3. PC connects to localhost:5555 which tunnels to phone's 5556
+        4. PC sends handshake first (role reversal compared to ADB reverse mode)
 
-        This is more reliable on older devices that have issues with 'adb reverse'.
+        This mode works on devices where 'adb reverse' creates a unidirectional tunnel.
         """
-        logger.info("Starting TCP server on port 5555 (ADB forward mode)")
-
-        # Step 0: Clean up any existing reverse forwarding on the same port
+        # Step 1: Clean up any existing forwards/reverses
         if self.adb_path:
-            logger.info("Checking for existing ADB forwards/reverses...")
+            logger.info("Cleaning up existing ADB tunnels...")
             cleanup_adb_port(self.adb_path, 5555)
-            # Also remove any reverse forwarding
             try:
-                remove_reverse_forward(self.adb_path, 5555)
+                remove_reverse_forward(self.adb_path, 5556)
             except Exception:
                 pass
 
-        # Step 1: Create and bind the TCP server
-        # In forward mode, we bind to all interfaces (0.0.0.0) so that
-        # the ADB forward can reach us
-        try:
-            self.sim_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sim_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.sim_socket.bind(("0.0.0.0", 5555))  # Bind to all interfaces for forward mode
-            self.sim_socket.listen(1)
-            logger.info("TCP server bound to 0.0.0.0:5555")
-        except OSError as e:
-            if e.errno == 10013 or "permission" in str(e).lower():
-                logger.error(f"Failed to bind to port 5555: {e}")
-                logger.error("Port 5555 is blocked or in use by another application")
-                self._print_port_conflict_guide()
-            else:
-                logger.error(f"Failed to bind to port 5555: {e}")
-            return
-
-        # Step 2: Set up ADB forward
+        # Step 2: Set up ADB forward tunnel
+        # adb forward tcp:5555 tcp:5556 means:
+        # - ADB listens on PC's localhost:5555
+        # - Forwards connections to phone's localhost:5556
         if self.adb_path:
-            success, message = setup_forward_for_server(self.adb_path, 5555, 5555)
-            if success:
-                logger.info(f"ADB forward: {message}")
-            else:
-                logger.warning(f"ADB forward setup failed: {message}")
-                logger.info("Android app may need to connect via Wi-Fi instead")
+            success, message = setup_forward_for_server(self.adb_path, 5555, 5556)
+            if not success:
+                logger.error(f"ADB forward setup failed: {message}")
+                logger.info("Make sure the Android app is running in ADB Forward Mode")
+                return
+            logger.info(f"ADB forward tunnel: {message}")
 
-        logger.info("Waiting for Android app to connect...")
-        logger.info("On your phone, the app should connect to localhost:5555")
+        # Step 3: Connect to the tunnel endpoint
+        logger.info("Connecting to Android app via ADB forward tunnel...")
+        logger.info("(PC:5555 -> ADB tunnel -> Phone:5556)")
 
-        while self.running:
+        max_retries = 10
+        retry_delay = 2  # seconds
+
+        for attempt in range(max_retries):
             try:
-                self.sim_conn, addr = self.sim_socket.accept()
-                self.sim_conn.settimeout(30.0)
-                logger.info(f"Connection from {addr}")
-                self._handle_connection()
-            except Exception as e:
-                logger.error(f"Connection error: {e}")
+                self.sim_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.sim_conn.settimeout(10.0)
+                self.sim_conn.connect(("127.0.0.1", 5555))
 
-        # Cleanup: remove forward when stopping
+                logger.info("Connected to Android app successfully!")
+
+                # Step 4: Send handshake (PC initiates in forward mode)
+                self._send_handshake_as_client()
+
+                # Step 5: Handle the connection (process commands from Android)
+                self._handle_forward_mode_connection()
+
+                break  # Exit retry loop on success
+
+            except socket.timeout:
+                logger.warning(f"Connection attempt {attempt + 1}/{max_retries} timed out")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    logger.info("Make sure the Android app is in 'ADB Forward Mode' and tapped 'Connect'")
+                    time.sleep(retry_delay)
+            except ConnectionRefusedError:
+                logger.warning(f"Connection refused (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    logger.info("The Android app may not be listening yet - start it first!")
+                    time.sleep(retry_delay)
+            except Exception as e:
+                logger.error(f"Connection failed: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+
+        else:  # All retries exhausted
+            logger.error("Failed to connect to Android app after multiple attempts")
+            logger.info("")
+            logger.info("Troubleshooting:")
+            logger.info("  1. Make sure the Android app is open")
+            logger.info("  2. Go to Settings > Connection mode > 'ADB Forward Mode'")
+            logger.info("  3. Tap 'Connect' button (app should show 'Waiting for PC...')")
+            logger.info("  4. Then run this server again")
+
+        # Cleanup
         if self.adb_path:
             try:
                 remove_port_forward(self.adb_path, 5555)
             except Exception:
                 pass
+
+    def _send_handshake_as_client(self) -> None:
+        """Send handshake to Android app (PC initiates in forward mode)."""
+        logger.info("Sending handshake to Android app...")
+
+        # Create handshake packet
+        handshake_packet = Packet(
+            command=Command.HANDSHAKE,
+            payload=b"PCEX-Server-1.0-Forward"
+        )
+
+        # Send handshake
+        data = handshake_packet.to_bytes()
+        self.sim_conn.sendall(data)
+        logger.debug(f"Sent handshake: {len(data)} bytes")
+
+        # Wait for response
+        response_data = self._receive_packet_data()
+        if response_data:
+            response_packet = Packet.from_bytes(response_data)
+            if response_packet and response_packet.command == Command.RESPONSE_OK:
+                logger.info(f"Handshake successful: {response_packet.payload.decode('utf-8', errors='replace')}")
+            else:
+                logger.warning(f"Unexpected handshake response: {response_packet}")
+        else:
+            logger.warning("No handshake response received")
+
+    def _handle_forward_mode_connection(self) -> None:
+        """Handle connection in forward mode (wait for commands from Android)."""
+        logger.info("Connection established in forward mode")
+        logger.info("Ready to receive commands from Android app...")
+
+        consecutive_empty_reads = 0
+        max_empty_reads = 3
+
+        while self.running:
+            try:
+                data = self._receive_packet_data()
+
+                if not data:
+                    consecutive_empty_reads += 1
+                    if consecutive_empty_reads >= max_empty_reads:
+                        logger.info("Connection closed by Android app")
+                        break
+                    continue
+
+                consecutive_empty_reads = 0
+
+                # Parse and handle the packet
+                packet = Packet.from_bytes(data)
+                if packet:
+                    self._process_packet(packet)
+                else:
+                    logger.warning("Failed to parse packet")
+
+            except socket.timeout:
+                # Timeout is OK in forward mode - Android might not be sending
+                continue
+            except ConnectionResetError:
+                logger.info("Connection reset by Android app")
+                break
+            except Exception as e:
+                logger.error(f"Error in forward mode: {e}")
+                break
+
+        # Close connection
+        if self.sim_conn:
+            try:
+                self.sim_conn.close()
+            except Exception:
+                pass
+            self.sim_conn = None
+
+    def _receive_packet_data(self) -> Optional[bytes]:
+        """Receive a complete packet from the socket."""
+        try:
+            # Read header first (10 bytes: Magic(4) + Command(1) + Flags(1) + Length(4))
+            header = self._recv_exact(10)
+            if not header:
+                return None
+
+            # Parse payload length from header
+            payload_length = int.from_bytes(header[6:10], 'little')
+
+            # Read payload + checksum (4 bytes)
+            remaining = payload_length + 4
+            rest = self._recv_exact(remaining)
+            if not rest:
+                return None
+
+            return header + rest
+
+        except socket.timeout:
+            return None
+        except Exception as e:
+            logger.debug(f"Error receiving packet: {e}")
+            return None
+
+    def _recv_exact(self, count: int) -> Optional[bytes]:
+        """Receive exactly 'count' bytes from socket."""
+        data = bytearray()
+        while len(data) < count:
+            chunk = self.sim_conn.recv(count - len(data))
+            if not chunk:
+                return None
+            data.extend(chunk)
+        return bytes(data)
 
     def _start_tcp_server(self) -> None:
         """Start TCP server (used by both ADB and simulation modes)."""
