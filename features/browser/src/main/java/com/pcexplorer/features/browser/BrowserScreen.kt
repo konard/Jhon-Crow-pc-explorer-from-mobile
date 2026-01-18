@@ -221,7 +221,7 @@ fun BrowserScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun BrowserTopBar(
     currentPath: String,
