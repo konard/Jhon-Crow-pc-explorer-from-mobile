@@ -43,7 +43,8 @@ from adb_helper import (
     find_adb_executable, auto_setup_adb_forwarding,
     list_devices, get_device_model, AdbConnection,
     check_adb_device_ready, auto_setup_adb_reverse, remove_reverse_forward,
-    cleanup_adb_port
+    cleanup_adb_port, check_adb_reverse_supported, setup_forward_for_server,
+    remove_port_forward
 )
 
 # Determine if running as frozen exe (PyInstaller)
@@ -224,6 +225,8 @@ class UsbServer:
             self._start_simulation_mode()
         elif self.mode == 'adb':
             self._start_adb_mode()
+        elif self.mode == 'forward':
+            self._start_forward_mode()
         elif self.mode == 'usb':
             self._start_usb_mode()
         else:  # auto mode
@@ -483,8 +486,115 @@ class UsbServer:
             logger.info("  3. Accept the USB debugging prompt on your phone")
             logger.info("")
             logger.info("Alternatively, use --simulate mode for manual setup")
+            logger.info("Or try --forward mode for devices with ADB reverse issues")
             logger.info("Falling back to simulation mode...")
             self._start_simulation_mode()
+
+    def _start_forward_mode(self) -> None:
+        """
+        Start in ADB forward mode.
+
+        This is a fallback for devices where 'adb reverse' doesn't work properly.
+        Instead of the phone connecting to localhost (which requires reverse),
+        the server listens on a port that ADB forwards from the phone.
+
+        Flow:
+        1. PC server binds to 0.0.0.0:5555 (all interfaces)
+        2. 'adb forward tcp:5555 tcp:5555' is set up
+        3. Android app connects to localhost:5555 on the phone
+        4. Traffic is forwarded through ADB to the PC server
+
+        This works on more devices because 'adb forward' is more reliable than
+        'adb reverse' on older devices (e.g., Huawei DUA-L22).
+        """
+        logger.info("Starting in ADB forward mode")
+
+        # Check if device is ready
+        success, message, self.adb_path = check_adb_device_ready(5555, 5555)
+
+        if not success:
+            logger.error(f"ADB setup failed: {message}")
+            logger.info("To use ADB forward mode:")
+            logger.info("  1. Enable USB debugging on your Android device")
+            logger.info("  2. Connect your device via USB cable")
+            logger.info("  3. Accept the USB debugging prompt on your phone")
+            logger.info("")
+            logger.info("Falling back to simulation mode...")
+            self._start_simulation_mode()
+            return
+
+        logger.info(f"ADB device check: {message}")
+        self._start_tcp_server_with_adb_forward()
+
+    def _start_tcp_server_with_adb_forward(self) -> None:
+        """
+        Start TCP server with ADB forward tunneling.
+
+        Unlike ADB reverse mode, in forward mode:
+        1. First, set up 'adb forward' to create the tunnel
+        2. Then, the PC server binds to port 5555
+        3. Android app connects to localhost:5555 on the phone
+        4. ADB forwards the connection to PC's port 5555
+
+        This is more reliable on older devices that have issues with 'adb reverse'.
+        """
+        logger.info("Starting TCP server on port 5555 (ADB forward mode)")
+
+        # Step 0: Clean up any existing reverse forwarding on the same port
+        if self.adb_path:
+            logger.info("Checking for existing ADB forwards/reverses...")
+            cleanup_adb_port(self.adb_path, 5555)
+            # Also remove any reverse forwarding
+            try:
+                remove_reverse_forward(self.adb_path, 5555)
+            except Exception:
+                pass
+
+        # Step 1: Create and bind the TCP server
+        # In forward mode, we bind to all interfaces (0.0.0.0) so that
+        # the ADB forward can reach us
+        try:
+            self.sim_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sim_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.sim_socket.bind(("0.0.0.0", 5555))  # Bind to all interfaces for forward mode
+            self.sim_socket.listen(1)
+            logger.info("TCP server bound to 0.0.0.0:5555")
+        except OSError as e:
+            if e.errno == 10013 or "permission" in str(e).lower():
+                logger.error(f"Failed to bind to port 5555: {e}")
+                logger.error("Port 5555 is blocked or in use by another application")
+                self._print_port_conflict_guide()
+            else:
+                logger.error(f"Failed to bind to port 5555: {e}")
+            return
+
+        # Step 2: Set up ADB forward
+        if self.adb_path:
+            success, message = setup_forward_for_server(self.adb_path, 5555, 5555)
+            if success:
+                logger.info(f"ADB forward: {message}")
+            else:
+                logger.warning(f"ADB forward setup failed: {message}")
+                logger.info("Android app may need to connect via Wi-Fi instead")
+
+        logger.info("Waiting for Android app to connect...")
+        logger.info("On your phone, the app should connect to localhost:5555")
+
+        while self.running:
+            try:
+                self.sim_conn, addr = self.sim_socket.accept()
+                self.sim_conn.settimeout(30.0)
+                logger.info(f"Connection from {addr}")
+                self._handle_connection()
+            except Exception as e:
+                logger.error(f"Connection error: {e}")
+
+        # Cleanup: remove forward when stopping
+        if self.adb_path:
+            try:
+                remove_port_forward(self.adb_path, 5555)
+            except Exception:
+                pass
 
     def _start_tcp_server(self) -> None:
         """Start TCP server (used by both ADB and simulation modes)."""
@@ -767,12 +877,23 @@ class UsbServer:
         """Handle an active connection."""
         logger.info("Handling connection...")
 
+        # Track consecutive empty reads to detect closed connections
+        consecutive_empty_reads = 0
+        max_empty_reads = 3  # Break after 3 consecutive empty reads
+
         while self.running:
             try:
                 # Receive packet
                 data = self._receive_data()
                 if not data:
+                    consecutive_empty_reads += 1
+                    if consecutive_empty_reads >= max_empty_reads:
+                        logger.info(f"Connection closed (received {consecutive_empty_reads} consecutive empty reads)")
+                        break
                     continue
+
+                # Reset counter when we get valid data
+                consecutive_empty_reads = 0
 
                 packet = Packet.from_bytes(data)
                 if not packet:
@@ -1077,9 +1198,15 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Connection Modes:
-  --adb       Use ADB port forwarding (RECOMMENDED)
+  --adb       Use ADB reverse mode (RECOMMENDED)
               Works with most Android devices without driver installation.
               Requires USB debugging enabled on the phone.
+              Uses 'adb reverse' to tunnel connections from phone to PC.
+
+  --forward   Use ADB forward mode (fallback for devices where --adb fails)
+              Some older devices (e.g., Huawei DUA-L22) have issues with 'adb reverse'.
+              This mode uses 'adb forward' instead, which works on more devices.
+              Try this if --adb mode shows "Read timeout" or "Checksum mismatch".
 
   --usb       Direct USB connection
               Requires proper USB drivers (WinUSB via Zadig).
@@ -1090,7 +1217,8 @@ Connection Modes:
 
 Examples:
   pc-explorer-server.exe              # Auto-detect best mode
-  pc-explorer-server.exe --adb        # Use ADB (recommended)
+  pc-explorer-server.exe --adb        # Use ADB reverse (recommended)
+  pc-explorer-server.exe --forward    # Use ADB forward (if --adb fails)
   pc-explorer-server.exe --simulate   # Manual TCP mode
 """
     )
@@ -1099,7 +1227,12 @@ Examples:
     mode_group.add_argument(
         "--adb", "-a",
         action="store_true",
-        help="Use ADB mode with automatic port forwarding (recommended)"
+        help="Use ADB reverse mode with automatic port forwarding (recommended)"
+    )
+    mode_group.add_argument(
+        "--forward", "-f",
+        action="store_true",
+        help="Use ADB forward mode (fallback for devices where --adb fails)"
     )
     mode_group.add_argument(
         "--usb", "-u",
@@ -1122,6 +1255,8 @@ Examples:
     # Determine mode
     if args.adb:
         mode = 'adb'
+    elif args.forward:
+        mode = 'forward'
     elif args.usb:
         mode = 'usb'
     elif args.simulate:
@@ -1179,14 +1314,29 @@ Examples:
         print("For Wi-Fi connection:")
         print("  Connect to this PC's IP address on port 5555")
     elif mode == 'adb':
-        print("Running in ADB mode (recommended)")
+        print("Running in ADB REVERSE mode (recommended)")
         print()
         print("Prerequisites:")
         print("  1. Enable USB debugging on your Android device")
         print("  2. Connect phone to PC via USB")
         print("  3. Accept the USB debugging prompt on your phone")
         print()
-        print("The server will automatically set up port forwarding.")
+        print("The server uses 'adb reverse' to tunnel connections from phone to PC.")
+        print()
+        print("If you see 'Read timeout' or 'Checksum mismatch' errors,")
+        print("try running with --forward instead (fallback for older devices).")
+    elif mode == 'forward':
+        print("Running in ADB FORWARD mode (fallback)")
+        print()
+        print("This mode is for devices where 'adb reverse' doesn't work properly,")
+        print("such as older Huawei devices (e.g., DUA-L22, Honor 7S).")
+        print()
+        print("Prerequisites:")
+        print("  1. Enable USB debugging on your Android device")
+        print("  2. Connect phone to PC via USB")
+        print("  3. Accept the USB debugging prompt on your phone")
+        print()
+        print("The server uses 'adb forward' to tunnel connections.")
     elif mode == 'usb':
         print("Running in USB mode")
         print()
