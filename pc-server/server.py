@@ -6,15 +6,18 @@ This server runs on the PC and handles USB communication with the Android app.
 It provides file system access through a custom USB protocol.
 
 Usage:
-    python server.py
+    python server.py              # Auto-detect mode (tries ADB first, then USB)
+    python server.py --adb        # Use ADB port forwarding (recommended)
+    python server.py --usb        # Direct USB mode (requires driver setup)
+    python server.py --simulate   # TCP simulation mode (for testing)
 
 Requirements:
     - Python 3.10+
-    - pyusb
-    - libusb (system library)
+    - For ADB mode: ADB executable (bundled or in PATH)
+    - For USB mode: pyusb, libusb (and proper USB drivers)
 
-Note: This is a prototype implementation. In production, you might want to use
-a more robust USB communication library or implement ADB-based communication.
+The recommended mode is --adb, which uses Android Debug Bridge for communication.
+This works with most Android devices without requiring special driver installation.
 """
 
 import sys
@@ -35,6 +38,10 @@ from protocol import (
     PayloadSerializer, MAGIC, MAX_PACKET_SIZE, DEFAULT_BUFFER_SIZE
 )
 from file_handler import FileHandler
+from adb_helper import (
+    find_adb_executable, auto_setup_adb_forwarding,
+    list_devices, get_device_model, AdbConnection
+)
 
 # Determine if running as frozen exe (PyInstaller)
 def is_frozen():
@@ -180,26 +187,118 @@ ANDROID_VENDOR_IDS = {
 class UsbServer:
     """USB server that handles communication with the Android app."""
 
-    def __init__(self, simulate: bool = False):
+    def __init__(self, mode: str = 'auto'):
+        """
+        Initialize the USB server.
+
+        Args:
+            mode: Connection mode - 'auto', 'adb', 'usb', or 'simulate'
+                - auto: Try ADB first, fall back to USB, then simulation
+                - adb: Use ADB port forwarding (recommended)
+                - usb: Direct USB connection (requires drivers)
+                - simulate: TCP simulation mode for testing
+        """
         self.file_handler = FileHandler()
-        self.simulate = simulate
+        self.mode = mode
         self.running = False
         self.usb_device = None
         self.usb_endpoint_in = None
         self.usb_endpoint_out = None
 
-        # For simulation mode (TCP socket based)
+        # For TCP modes (simulation and ADB)
         self.sim_socket = None
         self.sim_conn = None
+
+        # For ADB mode
+        self.adb_connection = None
 
     def start(self) -> None:
         """Start the USB server."""
         self.running = True
 
-        if self.simulate:
+        if self.mode == 'simulate':
             self._start_simulation_mode()
-        else:
+        elif self.mode == 'adb':
+            self._start_adb_mode()
+        elif self.mode == 'usb':
             self._start_usb_mode()
+        else:  # auto mode
+            self._start_auto_mode()
+
+    def _start_auto_mode(self) -> None:
+        """Auto-detect the best connection mode."""
+        logger.info("Auto-detecting connection mode...")
+
+        # Try ADB first (most compatible)
+        adb_path = find_adb_executable()
+        if adb_path:
+            logger.info(f"Found ADB at: {adb_path}")
+            success, message = auto_setup_adb_forwarding(5555, 5555)
+            if success:
+                logger.info(f"ADB setup successful: {message}")
+                self.mode = 'adb'
+                self._start_tcp_server()
+                return
+            else:
+                logger.info(f"ADB setup failed: {message}")
+
+        # Try USB mode
+        logger.info("Trying USB mode...")
+        try:
+            import usb.core
+            # Quick test if USB backend is available
+            usb.core.find()
+            self.mode = 'usb'
+            self._start_usb_mode()
+            return
+        except Exception as e:
+            logger.info(f"USB mode not available: {e}")
+
+        # Fall back to simulation mode
+        logger.info("Falling back to simulation mode (TCP)")
+        self.mode = 'simulate'
+        self._start_simulation_mode()
+
+    def _start_adb_mode(self) -> None:
+        """Start in ADB mode with automatic port forwarding."""
+        logger.info("Starting in ADB mode")
+
+        # Set up ADB connection
+        success, message = auto_setup_adb_forwarding(5555, 5555)
+
+        if success:
+            logger.info(f"ADB setup successful: {message}")
+            self._start_tcp_server()
+        else:
+            logger.error(f"ADB setup failed: {message}")
+            logger.info("To use ADB mode:")
+            logger.info("  1. Enable USB debugging on your Android device")
+            logger.info("  2. Connect your device via USB cable")
+            logger.info("  3. Accept the USB debugging prompt on your phone")
+            logger.info("")
+            logger.info("Alternatively, use --simulate mode for manual setup")
+            logger.info("Falling back to simulation mode...")
+            self._start_simulation_mode()
+
+    def _start_tcp_server(self) -> None:
+        """Start TCP server (used by both ADB and simulation modes)."""
+        import socket
+
+        logger.info("Starting TCP server on port 5555")
+        self.sim_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sim_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sim_socket.bind(("127.0.0.1", 5555))  # Bind to localhost only for ADB
+        self.sim_socket.listen(1)
+
+        logger.info("Waiting for Android app to connect...")
+
+        while self.running:
+            try:
+                self.sim_conn, addr = self.sim_socket.accept()
+                logger.info(f"Connection from {addr}")
+                self._handle_connection()
+            except Exception as e:
+                logger.error(f"Connection error: {e}")
 
     def stop(self) -> None:
         """Stop the USB server."""
@@ -210,17 +309,18 @@ class UsbServer:
             self.sim_socket.close()
 
     def _start_simulation_mode(self) -> None:
-        """Start in simulation mode using TCP socket."""
+        """Start in simulation mode using TCP socket (manual ADB setup required)."""
         import socket
 
         logger.info("Starting in simulation mode (TCP)")
         self.sim_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sim_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sim_socket.bind(("0.0.0.0", 5555))
+        self.sim_socket.bind(("0.0.0.0", 5555))  # Bind to all interfaces
         self.sim_socket.listen(1)
 
-        logger.info("Listening on port 5555...")
-        logger.info("Connect with: adb forward tcp:5555 tcp:5555")
+        logger.info("Listening on port 5555 (all interfaces)...")
+        logger.info("For USB connection, run: adb forward tcp:5555 tcp:5555")
+        logger.info("For Wi-Fi, connect to this PC's IP address on port 5555")
 
         while self.running:
             try:
@@ -618,18 +718,62 @@ class UsbServer:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="PC Explorer USB Server")
-    parser.add_argument(
+    parser = argparse.ArgumentParser(
+        description="PC Explorer USB Server",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Connection Modes:
+  --adb       Use ADB port forwarding (RECOMMENDED)
+              Works with most Android devices without driver installation.
+              Requires USB debugging enabled on the phone.
+
+  --usb       Direct USB connection
+              Requires proper USB drivers (WinUSB via Zadig).
+              Not recommended for most users.
+
+  --simulate  TCP simulation mode (manual setup)
+              Requires manual ADB port forwarding or Wi-Fi connection.
+
+Examples:
+  pc-explorer-server.exe              # Auto-detect best mode
+  pc-explorer-server.exe --adb        # Use ADB (recommended)
+  pc-explorer-server.exe --simulate   # Manual TCP mode
+"""
+    )
+
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--adb", "-a",
+        action="store_true",
+        help="Use ADB mode with automatic port forwarding (recommended)"
+    )
+    mode_group.add_argument(
+        "--usb", "-u",
+        action="store_true",
+        help="Use direct USB mode (requires driver setup)"
+    )
+    mode_group.add_argument(
         "--simulate", "-s",
         action="store_true",
-        help="Run in simulation mode using TCP socket (for testing)"
+        help="Run in simulation mode using TCP socket (manual setup)"
     )
+
     parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose logging"
     )
     args = parser.parse_args()
+
+    # Determine mode
+    if args.adb:
+        mode = 'adb'
+    elif args.usb:
+        mode = 'usb'
+    elif args.simulate:
+        mode = 'simulate'
+    else:
+        mode = 'auto'
 
     # Setup logging with file output
     log_file = setup_logging(verbose=args.verbose)
@@ -647,34 +791,63 @@ def main():
         logger.info(f"Bundle dir: {sys._MEIPASS}")
     logger.info(f"Working directory: {os.getcwd()}")
     logger.info(f"Log file: {log_file}")
-    logger.info(f"Mode: {'Simulation (TCP)' if args.simulate else 'USB'}")
+    logger.info(f"Mode: {mode}")
     logger.info(f"Verbose: {args.verbose}")
+
+    # Log ADB detection status
+    adb_path = find_adb_executable()
+    if adb_path:
+        logger.info(f"ADB found: {adb_path}")
+    else:
+        logger.info("ADB not found in bundle or system PATH")
+
     logger.info("-" * 60)
 
-    server = UsbServer(simulate=args.simulate)
+    server = UsbServer(mode=mode)
 
     print("=" * 50)
     print("PC Explorer USB Server")
     print("=" * 50)
     print()
 
-    if args.simulate:
+    if mode == 'simulate':
         print("Running in SIMULATION mode (TCP socket)")
-        print("Connect Android device via ADB:")
+        print()
+        print("For USB connection (manual):")
         print("  1. Enable USB debugging on your Android device")
         print("  2. Connect phone to PC via USB")
         print("  3. Run: adb forward tcp:5555 tcp:5555")
         print("  4. Open the Android app and press Connect")
-    else:
+        print()
+        print("For Wi-Fi connection:")
+        print("  Connect to this PC's IP address on port 5555")
+    elif mode == 'adb':
+        print("Running in ADB mode (recommended)")
+        print()
+        print("Prerequisites:")
+        print("  1. Enable USB debugging on your Android device")
+        print("  2. Connect phone to PC via USB")
+        print("  3. Accept the USB debugging prompt on your phone")
+        print()
+        print("The server will automatically set up port forwarding.")
+    elif mode == 'usb':
         print("Running in USB mode")
-        print("Connect Android device via USB cable")
         print()
         print("Supported manufacturers: Samsung, Google, Xiaomi, Huawei, OnePlus,")
         print("  LG, Sony, HTC, Motorola, ZTE, Vivo, OPPO, ASUS, Lenovo, and more")
         print()
-        print("IMPORTANT: USB direct mode has known limitations!")
-        print("If connection fails, try simulation mode instead:")
-        print("  pc-explorer-server.exe --simulate")
+        print("WARNING: USB direct mode has known limitations on Windows!")
+        print("If connection fails, try ADB mode instead:")
+        print("  pc-explorer-server.exe --adb")
+    else:  # auto mode
+        print("Running in AUTO mode")
+        print()
+        print("The server will automatically detect the best connection method:")
+        print("  1. Try ADB port forwarding (if ADB is available)")
+        print("  2. Try direct USB connection (if drivers are installed)")
+        print("  3. Fall back to simulation mode (manual setup required)")
+        print()
+        print("For best results, enable USB debugging on your Android device.")
 
     print()
     print("Press Ctrl+C to stop the server")
