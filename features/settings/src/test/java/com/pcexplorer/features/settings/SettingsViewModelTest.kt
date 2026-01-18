@@ -44,7 +44,7 @@ class SettingsViewModelTest {
         every { editor.putBoolean(any(), any()) } returns editor
         every { editor.putInt(any(), any()) } returns editor
 
-        val packageInfo = mockk<PackageInfo>()
+        val packageInfo = PackageInfo()
         packageInfo.versionName = "2.0.0"
 
         packageManager = mockk {
@@ -54,7 +54,7 @@ class SettingsViewModelTest {
         context = mockk {
             every { getSharedPreferences("settings", Context.MODE_PRIVATE) } returns sharedPreferences
             every { packageName } returns "com.pcexplorer"
-            every { packageManager } returns packageManager
+            every { packageManager } returns this@SettingsViewModelTest.packageManager
         }
 
         viewModel = SettingsViewModel(context)
