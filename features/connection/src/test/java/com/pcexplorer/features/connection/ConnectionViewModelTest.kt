@@ -10,6 +10,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -31,7 +32,7 @@ class ConnectionViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        connectToDeviceUseCase = mockk()
+        connectToDeviceUseCase = mockk(relaxed = true)
         every { connectToDeviceUseCase.connectionState } returns connectionStateFlow
         viewModel = ConnectionViewModel(connectToDeviceUseCase)
     }
@@ -41,46 +42,47 @@ class ConnectionViewModelTest {
         Dispatchers.resetMain()
     }
 
-    // connectionState tests
+    // connectionState tests - using first() to actually subscribe to the StateFlow
 
     @Test
     fun `initial connectionState is Disconnected`() = runTest {
-        advanceUntilIdle()
-        assertEquals(ConnectionState.Disconnected, viewModel.connectionState.value)
+        val state = viewModel.connectionState.first()
+        assertEquals(ConnectionState.Disconnected, state)
     }
 
     @Test
     fun `connectionState reflects use case state changes`() = runTest {
-        advanceUntilIdle()
+        // First, collect once to trigger the stateIn subscription
+        assertEquals(ConnectionState.Disconnected, viewModel.connectionState.first())
 
         connectionStateFlow.value = ConnectionState.Connecting
         advanceUntilIdle()
-        assertEquals(ConnectionState.Connecting, viewModel.connectionState.value)
+        assertEquals(ConnectionState.Connecting, viewModel.connectionState.first())
 
         val deviceInfo = DeviceInfo(1, 2, "dev", null, null, null)
         connectionStateFlow.value = ConnectionState.Connected(deviceInfo)
         advanceUntilIdle()
-        assertTrue(viewModel.connectionState.value is ConnectionState.Connected)
+        assertTrue(viewModel.connectionState.first() is ConnectionState.Connected)
     }
 
     @Test
     fun `connectionState shows PermissionRequired`() = runTest {
-        advanceUntilIdle()
+        assertEquals(ConnectionState.Disconnected, viewModel.connectionState.first())
 
         connectionStateFlow.value = ConnectionState.PermissionRequired
         advanceUntilIdle()
 
-        assertEquals(ConnectionState.PermissionRequired, viewModel.connectionState.value)
+        assertEquals(ConnectionState.PermissionRequired, viewModel.connectionState.first())
     }
 
     @Test
     fun `connectionState shows Error state`() = runTest {
-        advanceUntilIdle()
+        assertEquals(ConnectionState.Disconnected, viewModel.connectionState.first())
 
         connectionStateFlow.value = ConnectionState.Error("Test error")
         advanceUntilIdle()
 
-        val state = viewModel.connectionState.value
+        val state = viewModel.connectionState.first()
         assertTrue(state is ConnectionState.Error)
         assertEquals("Test error", (state as ConnectionState.Error).message)
     }
@@ -160,9 +162,8 @@ class ConnectionViewModelTest {
         coEvery { connectToDeviceUseCase() } returns Result.success(Unit)
         every { connectToDeviceUseCase.hasPermission() } returns false
 
-        // Initial state
-        advanceUntilIdle()
-        assertEquals(ConnectionState.Disconnected, viewModel.connectionState.value)
+        // Initial state - use first() to actually subscribe
+        assertEquals(ConnectionState.Disconnected, viewModel.connectionState.first())
 
         // Request permission
         viewModel.requestPermission()
@@ -175,20 +176,22 @@ class ConnectionViewModelTest {
         viewModel.connect()
         advanceUntilIdle()
 
-        assertEquals(ConnectionState.Connecting, viewModel.connectionState.value)
+        assertEquals(ConnectionState.Connecting, viewModel.connectionState.first())
 
         // Connected
         val deviceInfo = DeviceInfo(1, 2, "dev", "Manufacturer", "Product", "123")
         connectionStateFlow.value = ConnectionState.Connected(deviceInfo)
         advanceUntilIdle()
 
-        assertTrue(viewModel.connectionState.value is ConnectionState.Connected)
+        assertTrue(viewModel.connectionState.first() is ConnectionState.Connected)
     }
 
     @Test
     fun `disconnect after error`() = runTest {
         coEvery { connectToDeviceUseCase.disconnect() } returns Unit
-        advanceUntilIdle()
+
+        // Subscribe to get initial state
+        assertEquals(ConnectionState.Disconnected, viewModel.connectionState.first())
 
         // Error state
         connectionStateFlow.value = ConnectionState.Error("Connection lost")

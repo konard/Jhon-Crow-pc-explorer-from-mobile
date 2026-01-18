@@ -54,7 +54,7 @@ class SettingsViewModelTest {
         context = mockk {
             every { getSharedPreferences("settings", Context.MODE_PRIVATE) } returns sharedPreferences
             every { packageName } returns "com.pcexplorer"
-            every { getPackageManager() } returns packageManager
+            every { packageManager } returns packageManager
         }
 
         viewModel = SettingsViewModel(context)
