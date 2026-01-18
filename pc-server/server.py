@@ -649,7 +649,6 @@ class UsbServer:
         except ImportError:
             logger.error("pyusb not installed. Run: pip install pyusb")
             logger.info("Falling back to simulation mode...")
-            self.simulate = True
             self._start_simulation_mode()
             return
 
@@ -681,7 +680,6 @@ class UsbServer:
             logger.error("=" * 60)
             logger.info("")
             logger.info("Falling back to simulation mode (TCP)...")
-            self.simulate = True
             self._start_simulation_mode()
             return
 
@@ -788,7 +786,9 @@ class UsbServer:
 
     def _receive_data(self) -> Optional[bytes]:
         """Receive data from the connection."""
-        if self.simulate:
+        # Use sim_conn presence to determine if we're in TCP mode (ADB or simulation)
+        # This is more robust than a separate flag that could get out of sync
+        if self.sim_conn is not None:
             try:
                 # First receive header to get payload length
                 header = self.sim_conn.recv(10)
@@ -817,7 +817,8 @@ class UsbServer:
 
     def _send_data(self, data: bytes) -> None:
         """Send data through the connection."""
-        if self.simulate:
+        # Use sim_conn presence to determine if we're in TCP mode (ADB or simulation)
+        if self.sim_conn is not None:
             self.sim_conn.sendall(data)
         else:
             self.usb_device.write(self.usb_endpoint_out, data, timeout=5000)
