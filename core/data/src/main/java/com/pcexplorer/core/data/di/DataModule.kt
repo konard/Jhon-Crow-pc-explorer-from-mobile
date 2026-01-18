@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.room.Room
 import com.pcexplorer.core.data.local.AppDatabase
 import com.pcexplorer.core.data.local.TransferDao
+import com.pcexplorer.core.data.repository.ConnectionProvider
 import com.pcexplorer.core.data.repository.FileRepositoryImpl
+import com.pcexplorer.core.data.repository.TcpConnectionRepositoryImpl
 import com.pcexplorer.core.data.repository.TransferRepositoryImpl
 import com.pcexplorer.core.data.repository.UsbConnectionRepositoryImpl
 import com.pcexplorer.core.domain.repository.FileRepository
@@ -24,8 +26,8 @@ abstract class RepositoryModule {
 
     @Binds
     @Singleton
-    abstract fun bindUsbConnectionRepository(
-        impl: UsbConnectionRepositoryImpl
+    abstract fun bindConnectionRepository(
+        impl: ConnectionProvider
     ): UsbConnectionRepository
 
     @Binds
@@ -39,6 +41,17 @@ abstract class RepositoryModule {
     abstract fun bindTransferRepository(
         impl: TransferRepositoryImpl
     ): TransferRepository
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object ConnectionModule {
+
+    @Provides
+    @Singleton
+    fun provideTcpConnectionRepository(): TcpConnectionRepositoryImpl {
+        return TcpConnectionRepositoryImpl()
+    }
 }
 
 @Module

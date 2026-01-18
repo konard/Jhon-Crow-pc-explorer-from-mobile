@@ -5,6 +5,10 @@
     <!-- USB permissions -->
     <uses-feature android:name="android.hardware.usb.host" android:required="true" />
 
+    <!-- Network permissions for TCP socket connections (ADB reverse mode) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- Storage permissions for file operations -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
