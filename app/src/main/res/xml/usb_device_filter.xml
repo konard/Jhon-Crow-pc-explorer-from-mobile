@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accept all USB devices for maximum compatibility -->
+    <!-- PC USB connections typically use vendor-specific classes -->
+    <usb-device />
+</resources>

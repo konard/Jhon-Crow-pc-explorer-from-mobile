@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PC Explorer</string>
+
+    <!-- Connection -->
+    <string name="connection_status_connected">Connected</string>
+    <string name="connection_status_disconnected">Disconnected</string>
+    <string name="connection_status_connecting">Connecting…</string>
+    <string name="connection_waiting_for_pc">Waiting for PC connection</string>
+    <string name="connection_usb_permission_required">USB permission required</string>
+    <string name="connection_grant_permission">Grant Permission</string>
+
+    <!-- Navigation -->
+    <string name="nav_connection">Connection</string>
+    <string name="nav_browser">Files</string>
+    <string name="nav_transfer">Transfers</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Browser -->
+    <string name="browser_empty_folder">This folder is empty</string>
+    <string name="browser_loading">Loading files…</string>
+    <string name="browser_sort_by">Sort by</string>
+    <string name="browser_sort_name">Name</string>
+    <string name="browser_sort_date">Date</string>
+    <string name="browser_sort_size">Size</string>
+    <string name="browser_search">Search files</string>
+    <string name="browser_select_all">Select All</string>
+    <string name="browser_deselect_all">Deselect All</string>
+
+    <!-- File operations -->
+    <string name="file_copy">Copy</string>
+    <string name="file_download">Download</string>
+    <string name="file_upload">Upload</string>
+    <string name="file_delete">Delete</string>
+    <string name="file_rename">Rename</string>
+    <string name="file_create_folder">Create Folder</string>
+    <string name="file_properties">Properties</string>
+
+    <!-- Transfer -->
+    <string name="transfer_in_progress">Transfer in progress</string>
+    <string name="transfer_completed">Transfer completed</string>
+    <string name="transfer_failed">Transfer failed</string>
+    <string name="transfer_cancelled">Transfer cancelled</string>
+    <string name="transfer_cancel">Cancel</string>
+    <string name="transfer_retry">Retry</string>
+    <string name="transfer_history">Transfer History</string>
+    <string name="transfer_no_history">No transfer history</string>
+
+    <!-- Settings -->
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_system">Follow System</string>
+    <string name="settings_connection">Connection</string>
+    <string name="settings_auto_connect">Auto-connect on USB attachment</string>
+    <string name="settings_transfer">Transfer</string>
+    <string name="settings_buffer_size">Buffer Size</string>
+    <string name="settings_parallel_transfers">Parallel Transfers</string>
+    <string name="settings_about">About</string>
+    <string name="settings_version">Version</string>
+
+    <!-- Dialogs -->
+    <string name="dialog_confirm">Confirm</string>
+    <string name="dialog_cancel">Cancel</string>
+    <string name="dialog_ok">OK</string>
+    <string name="dialog_delete_confirm">Are you sure you want to delete the selected files?</string>
+    <string name="dialog_rename_title">Rename</string>
+    <string name="dialog_new_folder_title">New Folder</string>
+    <string name="dialog_enter_name">Enter name</string>
+
+    <!-- Errors -->
+    <string name="error_connection_failed">Connection failed</string>
+    <string name="error_permission_denied">Permission denied</string>
+    <string name="error_file_not_found">File not found</string>
+    <string name="error_no_space">Not enough space</string>
+    <string name="error_unknown">Unknown error occurred</string>
+
+    <!-- Notifications -->
+    <string name="notification_channel_transfer">File Transfers</string>
+    <string name="notification_transfer_title">Transferring files</string>
+    <string name="notification_transfer_progress">%1$d%% completed</string>
+</resources>
