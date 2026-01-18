@@ -241,6 +241,10 @@ class UsbServer:
                 return
             else:
                 logger.info(f"ADB setup failed: {message}")
+        else:
+            # ADB not found - log guidance
+            logger.warning("ADB not found - this is the recommended connection method")
+            self._print_adb_installation_guide()
 
         # Try USB mode
         logger.info("Trying USB mode...")
@@ -249,15 +253,210 @@ class UsbServer:
             # Quick test if USB backend is available
             usb.core.find()
             self.mode = 'usb'
-            self._start_usb_mode()
+            # Try USB mode with error limit
+            if not self._start_usb_mode_with_fallback():
+                # USB mode failed, fall back to simulation with guidance
+                logger.info("USB mode failed repeatedly, falling back to simulation mode")
+                self._print_connection_failure_guide()
+                self.mode = 'simulate'
+                self._start_simulation_mode()
             return
         except Exception as e:
             logger.info(f"USB mode not available: {e}")
 
         # Fall back to simulation mode
         logger.info("Falling back to simulation mode (TCP)")
+        self._print_connection_failure_guide()
         self.mode = 'simulate'
         self._start_simulation_mode()
+
+    def _print_adb_installation_guide(self) -> None:
+        """Print instructions for installing ADB."""
+        print()
+        print("=" * 60)
+        print("ADB NOT FOUND - RECOMMENDED SETUP")
+        print("=" * 60)
+        print()
+        print("For the best experience, download Android Platform Tools:")
+        print()
+        print("  https://developer.android.com/tools/releases/platform-tools")
+        print()
+        print("Then either:")
+        print("  1. Extract and place adb.exe next to this server")
+        print("  2. Or add the platform-tools folder to your PATH")
+        print()
+        print("=" * 60)
+        print()
+
+    def _print_connection_failure_guide(self) -> None:
+        """Print guidance when all automatic connection methods fail."""
+        print()
+        print("=" * 60)
+        print("CONNECTION SETUP REQUIRED")
+        print("=" * 60)
+        print()
+        print("Automatic connection could not be established.")
+        print("Please use one of these methods:")
+        print()
+        print("METHOD 1: Install ADB (RECOMMENDED)")
+        print("-" * 40)
+        print("1. Download Android Platform Tools:")
+        print("   https://developer.android.com/tools/releases/platform-tools")
+        print("2. Extract and place adb.exe next to this server")
+        print("3. Enable USB debugging on your phone:")
+        print("   Settings > Developer Options > USB Debugging")
+        print("4. Restart this server")
+        print()
+        print("METHOD 2: Manual ADB Setup")
+        print("-" * 40)
+        print("If you have ADB installed elsewhere:")
+        print("1. Open Command Prompt")
+        print("2. Run: adb forward tcp:5555 tcp:5555")
+        print("3. The server will now accept connections")
+        print()
+        print("METHOD 3: Wi-Fi Connection")
+        print("-" * 40)
+        print("1. Connect phone and PC to the same Wi-Fi network")
+        print("2. Find this PC's IP address (run: ipconfig)")
+        print("3. In the Android app, enter the PC's IP address")
+        print()
+        print("=" * 60)
+        print()
+        logger.info("Connection guidance printed to console")
+
+    def _start_usb_mode_with_fallback(self) -> bool:
+        """
+        Start USB mode with error detection and fallback.
+
+        Returns:
+            True if USB mode is working, False if should fall back to another mode.
+        """
+        try:
+            import usb.core
+            import usb.util
+        except ImportError:
+            logger.error("pyusb not installed")
+            return False
+
+        # Setup libusb backend
+        setup_libusb_backend()
+
+        logger.info("Starting in USB mode")
+        logger.info("Waiting for USB device...")
+
+        # Test if USB backend is available
+        try:
+            usb.core.find()
+        except usb.core.NoBackendError as e:
+            logger.error(f"No USB backend available: {e}")
+            return False
+
+        # Track errors to detect repeated failures
+        consecutive_errors = 0
+        max_consecutive_errors = 5
+        last_error_message = None
+
+        while self.running and consecutive_errors < max_consecutive_errors:
+            device = None
+            found_vendor = None
+
+            try:
+                for vendor_id, vendor_name in ANDROID_VENDOR_IDS.items():
+                    device = usb.core.find(idVendor=vendor_id)
+                    if device is not None:
+                        found_vendor = vendor_name
+                        break
+            except usb.core.NoBackendError:
+                logger.error("Lost USB backend connection")
+                return False
+
+            if device is None:
+                time.sleep(1)
+                consecutive_errors = 0  # Reset on no device (still searching)
+                continue
+
+            logger.info(f"Found {found_vendor} device: VendorID=0x{device.idVendor:04X}, "
+                       f"ProductID=0x{device.idProduct:04X}")
+
+            try:
+                if device.is_kernel_driver_active(0):
+                    device.detach_kernel_driver(0)
+
+                device.set_configuration()
+                cfg = device.get_active_configuration()
+                intf = cfg[(0, 0)]
+
+                self.usb_endpoint_out = usb.util.find_descriptor(
+                    intf,
+                    custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
+                )
+                self.usb_endpoint_in = usb.util.find_descriptor(
+                    intf,
+                    custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
+                )
+
+                if self.usb_endpoint_out and self.usb_endpoint_in:
+                    self.usb_device = device
+                    logger.info("USB device configured successfully")
+                    consecutive_errors = 0
+                    self._handle_connection()
+                    # If we get here, connection ended normally
+                else:
+                    logger.warning("Could not find USB endpoints")
+                    consecutive_errors += 1
+
+            except Exception as e:
+                error_msg = str(e)
+                if error_msg != last_error_message:
+                    logger.error(f"USB error: {error_msg}")
+                    last_error_message = error_msg
+
+                consecutive_errors += 1
+
+                if "not supported" in error_msg.lower() or "unimplemented" in error_msg.lower():
+                    # This is a Windows driver issue - likely won't resolve itself
+                    logger.warning(f"USB driver incompatibility detected ({consecutive_errors}/{max_consecutive_errors})")
+                    if consecutive_errors >= max_consecutive_errors:
+                        logger.error("USB mode failed due to Windows driver incompatibility")
+                        self._print_usb_driver_error_guide()
+                        return False
+
+                time.sleep(1)
+
+        if consecutive_errors >= max_consecutive_errors:
+            logger.error("USB mode failed after repeated errors")
+            return False
+
+        return True
+
+    def _print_usb_driver_error_guide(self) -> None:
+        """Print guidance when USB driver error is detected."""
+        print()
+        print("=" * 60)
+        print("USB DRIVER INCOMPATIBILITY DETECTED")
+        print("=" * 60)
+        print()
+        print("Windows is using a driver that prevents direct USB access.")
+        print("This is a known limitation on Windows with libusb.")
+        print()
+        print("SOLUTION: Use ADB mode instead (recommended)")
+        print("-" * 40)
+        print("1. Download Android Platform Tools:")
+        print("   https://developer.android.com/tools/releases/platform-tools")
+        print("2. Extract adb.exe to the same folder as this server")
+        print("3. Enable USB debugging on your phone")
+        print("4. Restart this server")
+        print()
+        print("ALTERNATIVE: Replace USB driver with Zadig")
+        print("-" * 40)
+        print("WARNING: This may disable file transfer (MTP) mode!")
+        print("1. Download Zadig: https://zadig.akeo.ie/")
+        print("2. Connect your phone")
+        print("3. In Zadig, select your phone and install WinUSB driver")
+        print()
+        print("=" * 60)
+        print()
+        logger.info("USB driver error guidance printed to console")
 
     def _start_adb_mode(self) -> None:
         """Start in ADB mode with automatic port forwarding."""
@@ -799,7 +998,10 @@ Examples:
     if adb_path:
         logger.info(f"ADB found: {adb_path}")
     else:
-        logger.info("ADB not found in bundle or system PATH")
+        logger.warning("ADB not found in bundle or system PATH")
+        logger.info("To enable ADB mode, download Android Platform Tools from:")
+        logger.info("  https://developer.android.com/tools/releases/platform-tools")
+        logger.info("Then place adb.exe next to this server or add it to PATH")
 
     logger.info("-" * 60)
 

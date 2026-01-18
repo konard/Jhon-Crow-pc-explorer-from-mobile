@@ -522,3 +522,115 @@ After research, the **simplest portable solution** that can work is:
 - `pc-explorer-server_20260118_082639.log` - Third attempt (original server)
 - `pc-explorer-server_20260118_082709.log` - Fourth attempt (original server)
 - `pc-explorer-server_20260118_085249.log` - **Fifth attempt (with multi-vendor fix)** - Shows new driver error
+- `pc-explorer-server_20260118_095514.log` - **Sixth attempt (with ADB mode)** - ADB not bundled, USB fallback fails
+
+---
+
+## Phase 4: ADB Mode Testing Analysis
+
+### New Log File Analysis
+
+**Log File:** `pc-explorer-server_20260118_095514.log`
+**Timestamp:** 09:55:14
+**Server Version:** With ADB mode support
+
+### Log Contents Analysis
+
+```
+2026-01-18 09:55:14,768 - INFO - ============================================================
+2026-01-18 09:55:14,769 - INFO - PC Explorer USB Server - Starting
+2026-01-18 09:55:14,771 - INFO - Mode: auto
+2026-01-18 09:55:14,783 - INFO - ADB not found in bundle or system PATH
+2026-01-18 09:55:14,815 - INFO - Auto-detecting connection mode...
+2026-01-18 09:55:14,828 - INFO - Trying USB mode...
+2026-01-18 09:55:14,859 - INFO - Loaded libusb backend from: C:\...\libusb-1.0.dll
+2026-01-18 09:55:14,862 - INFO - Waiting for USB device...
+2026-01-18 09:55:14,944 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 09:55:14,946 - ERROR - USB error: Operation not supported or unimplemented on this platform
+[Pattern repeats 10+ times]
+```
+
+### Issue Identified
+
+The user is using the portable EXE with ADB mode support, BUT:
+
+1. **ADB is NOT bundled** with the executable
+2. **ADB is NOT in system PATH** on the user's machine
+3. **Auto mode fallback** correctly tries USB mode next
+4. **USB mode fails** with the same Windows driver error as before
+
+### Root Cause: Missing ADB in Portable Distribution
+
+The server correctly reports:
+```
+ADB not found in bundle or system PATH
+```
+
+The user downloaded the .exe file but the ADB platform tools (adb.exe, AdbWinApi.dll, AdbWinUsbApi.dll) were not bundled with it.
+
+### Current Behavior vs Expected
+
+| Aspect | Current | Expected |
+|--------|---------|----------|
+| ADB Detection | ✅ Correctly reports ADB not found | ✅ Good |
+| Fallback to USB | ✅ Correctly falls back | ⚠️ USB fails on Windows |
+| User Guidance | ❌ No clear instructions | ❌ User doesn't know what to do |
+| Error Recovery | ❌ Loops forever with error | ❌ Should provide alternatives |
+
+### Required Improvements
+
+1. **Better User Guidance** - When ADB is not found and USB mode fails, provide clear instructions
+2. **Downloadable ADB** - Tell user where to get ADB platform tools
+3. **Graceful Failure** - Stop looping after USB errors, offer simulation mode
+
+### Updated Solution Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    PC EXPLORER SERVER (auto mode)               │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+               ┌───────────────────────────────┐
+               │     Check for bundled ADB     │
+               └───────────────────────────────┘
+                    │                    │
+               Found ✓                Not Found
+                    ▼                    ▼
+         ┌──────────────────┐  ┌──────────────────────────┐
+         │  ADB Mode Ready  │  │  Check System PATH ADB   │
+         └──────────────────┘  └──────────────────────────┘
+                                     │            │
+                                Found ✓       Not Found
+                                     ▼            ▼
+                          ┌──────────────────┐  ┌────────────────────┐
+                          │ ADB Mode Ready   │  │ Try USB Mode       │
+                          └──────────────────┘  └────────────────────┘
+                                                       │
+                                               ┌───────┴──────────┐
+                                           Success            USB Error
+                                               ▼                    ▼
+                                      ┌────────────────┐  ┌─────────────────────┐
+                                      │ USB Mode Ready │  │ SHOW USER GUIDANCE: │
+                                      └────────────────┘  │ • How to get ADB    │
+                                                          │ • How to use --sim  │
+                                                          │ • How to use Zadig  │
+                                                          └─────────────────────┘
+```
+
+### Implementation Changes Needed
+
+1. **server.py modifications:**
+   - Add USB error counter to stop after N failures
+   - Print clear guidance when all modes fail
+   - Suggest downloading ADB platform tools
+   - Offer simulation mode as fallback
+
+2. **BUILD.md updates:**
+   - Add instructions for downloading ADB
+   - Document portable deployment options
+
+### References
+
+- [Android SDK Platform Tools Downloads](https://developer.android.com/tools/releases/platform-tools)
+- [Scrcpy portable builds](https://github.com/Genymobile/scrcpy/releases) - Example of bundled ADB distribution

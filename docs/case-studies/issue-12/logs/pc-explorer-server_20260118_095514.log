@@ -1,0 +1,40 @@
+2026-01-18 09:55:14,768 - INFO - ============================================================
+2026-01-18 09:55:14,769 - INFO - PC Explorer USB Server - Starting
+2026-01-18 09:55:14,769 - INFO - ============================================================
+2026-01-18 09:55:14,769 - INFO - Startup time: 2026-01-18T09:55:14.769598
+2026-01-18 09:55:14,769 - INFO - Python version: 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+2026-01-18 09:55:14,770 - INFO - Platform: win32
+2026-01-18 09:55:14,770 - INFO - Frozen (exe): True
+2026-01-18 09:55:14,771 - INFO - Executable: I:\Загрузки\Mobile to pc\pc-explorer-server.exe
+2026-01-18 09:55:14,771 - INFO - Bundle dir: C:\Users\Admin-1\AppData\Local\Temp\_MEI30842
+2026-01-18 09:55:14,771 - INFO - Working directory: I:\Загрузки\Mobile to pc
+2026-01-18 09:55:14,771 - INFO - Log file: I:\Загрузки\Mobile to pc\logs\pc-explorer-server_20260118_095514.log
+2026-01-18 09:55:14,771 - INFO - Mode: auto
+2026-01-18 09:55:14,771 - INFO - Verbose: False
+2026-01-18 09:55:14,783 - INFO - ADB not found in bundle or system PATH
+2026-01-18 09:55:14,784 - INFO - ------------------------------------------------------------
+2026-01-18 09:55:14,815 - INFO - Auto-detecting connection mode...
+2026-01-18 09:55:14,828 - INFO - Trying USB mode...
+2026-01-18 09:55:14,859 - INFO - Loaded libusb backend from: C:\Users\Admin-1\AppData\Local\Temp\_MEI30842\libusb-1.0.dll
+2026-01-18 09:55:14,860 - INFO - Starting in USB mode
+2026-01-18 09:55:14,862 - INFO - Waiting for USB device...
+2026-01-18 09:55:14,944 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 09:55:14,946 - ERROR - USB error: Operation not supported or unimplemented on this platform
+2026-01-18 09:55:16,025 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 09:55:16,026 - ERROR - USB error: Operation not supported or unimplemented on this platform
+2026-01-18 09:55:17,099 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 09:55:17,101 - ERROR - USB error: Operation not supported or unimplemented on this platform
+2026-01-18 09:55:18,173 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 09:55:18,175 - ERROR - USB error: Operation not supported or unimplemented on this platform
+2026-01-18 09:55:19,252 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 09:55:19,253 - ERROR - USB error: Operation not supported or unimplemented on this platform
+2026-01-18 09:55:20,322 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 09:55:20,325 - ERROR - USB error: Operation not supported or unimplemented on this platform
+2026-01-18 09:55:21,405 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 09:55:21,406 - ERROR - USB error: Operation not supported or unimplemented on this platform
+2026-01-18 09:55:22,475 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 09:55:22,477 - ERROR - USB error: Operation not supported or unimplemented on this platform
+2026-01-18 09:55:23,545 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 09:55:23,546 - ERROR - USB error: Operation not supported or unimplemented on this platform
+2026-01-18 09:55:24,614 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 09:55:24,616 - ERROR - USB error: Operation not supported or unimplemented on this platform
