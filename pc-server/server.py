@@ -24,6 +24,8 @@ import logging
 import argparse
 import threading
 from typing import Optional
+from datetime import datetime
+from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -34,7 +36,111 @@ from protocol import (
 )
 from file_handler import FileHandler
 
-# Configure logging
+# Determine if running as frozen exe (PyInstaller)
+def is_frozen():
+    """Check if running as a PyInstaller frozen executable."""
+    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
+
+def get_app_dir():
+    """Get the application directory (works for both frozen exe and script)."""
+    if is_frozen():
+        return Path(sys._MEIPASS)
+    return Path(__file__).parent
+
+
+def get_log_dir():
+    """Get the directory for log files."""
+    if is_frozen():
+        # When running as exe, log to a 'logs' folder next to the exe
+        exe_dir = Path(sys.executable).parent
+        log_dir = exe_dir / "logs"
+    else:
+        log_dir = Path(__file__).parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    return log_dir
+
+
+def setup_logging(verbose: bool = False):
+    """Configure logging with both console and file handlers."""
+    log_level = logging.DEBUG if verbose else logging.INFO
+    log_format = '%(asctime)s - %(levelname)s - %(message)s'
+
+    # Create root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(log_level)
+    console_handler.setFormatter(logging.Formatter(log_format))
+    root_logger.addHandler(console_handler)
+
+    # File handler - one log file per session
+    log_dir = get_log_dir()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"pc-explorer-server_{timestamp}.log"
+
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)  # Always log debug to file
+    file_handler.setFormatter(logging.Formatter(log_format))
+    root_logger.addHandler(file_handler)
+
+    return log_file
+
+
+def setup_libusb_backend():
+    """
+    Setup libusb backend for PyUSB, especially when running as frozen exe.
+
+    This function handles the 'No backend available' error that occurs when
+    pyinstaller bundles the application without the libusb DLL being discoverable.
+    """
+    if not is_frozen():
+        return None  # Use default backend discovery when running as script
+
+    import ctypes
+    import ctypes.util
+
+    # When running as frozen exe, look for libusb DLL in the bundle
+    app_dir = get_app_dir()
+
+    # Possible libusb DLL names and locations
+    dll_names = [
+        'libusb-1.0.dll',
+        'libusb0.dll',
+        'libusb-1.0.so',
+        'libusb-1.0.dylib',
+    ]
+
+    # Search paths within the frozen bundle
+    search_paths = [
+        app_dir,
+        app_dir / 'libusb',
+        app_dir / 'usb1',
+        Path(sys.executable).parent,
+    ]
+
+    for search_path in search_paths:
+        for dll_name in dll_names:
+            dll_path = search_path / dll_name
+            if dll_path.exists():
+                logger.debug(f"Found libusb at: {dll_path}")
+                try:
+                    # Try to load the library
+                    ctypes.CDLL(str(dll_path))
+                    # Add to PATH so pyusb can find it
+                    os.environ['PATH'] = str(search_path) + os.pathsep + os.environ.get('PATH', '')
+                    logger.info(f"Loaded libusb backend from: {dll_path}")
+                    return str(dll_path)
+                except OSError as e:
+                    logger.warning(f"Failed to load {dll_path}: {e}")
+
+    logger.warning("No bundled libusb found, relying on system installation")
+    return None
+
+
+# Configure basic logging (will be replaced in main())
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -110,14 +216,47 @@ class UsbServer:
             self._start_simulation_mode()
             return
 
+        # Setup libusb backend (especially important for frozen exe)
+        setup_libusb_backend()
+
         logger.info("Starting in USB mode")
         logger.info("Waiting for USB device...")
+
+        # Test if USB backend is available before entering the main loop
+        try:
+            # This will raise NoBackendError if libusb is not available
+            test_device = usb.core.find()
+            logger.debug("USB backend is available")
+        except usb.core.NoBackendError as e:
+            logger.error("=" * 60)
+            logger.error("USB BACKEND ERROR: No libusb backend available!")
+            logger.error("=" * 60)
+            logger.error("")
+            logger.error("This error occurs when the libusb library is not installed")
+            logger.error("or cannot be found by the application.")
+            logger.error("")
+            logger.error("SOLUTIONS:")
+            logger.error("1. Install libusb using Zadig (https://zadig.akeo.ie/)")
+            logger.error("2. Or place libusb-1.0.dll in the same folder as this exe")
+            logger.error("3. Or run with --simulate flag to use TCP mode instead")
+            logger.error("")
+            logger.error(f"Technical details: {e}")
+            logger.error("=" * 60)
+            logger.info("")
+            logger.info("Falling back to simulation mode (TCP)...")
+            self.simulate = True
+            self._start_simulation_mode()
+            return
 
         while self.running:
             # Find Android device
             # Note: Vendor/Product IDs vary by device manufacturer
             # This is a simplified example
-            device = usb.core.find(idVendor=0x18D1)  # Google's vendor ID
+            try:
+                device = usb.core.find(idVendor=0x18D1)  # Google's vendor ID
+            except usb.core.NoBackendError:
+                logger.error("Lost USB backend connection")
+                break
 
             if device is None:
                 time.sleep(1)
@@ -436,8 +575,25 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+    # Setup logging with file output
+    log_file = setup_logging(verbose=args.verbose)
+
+    # Log startup information
+    logger.info("=" * 60)
+    logger.info("PC Explorer USB Server - Starting")
+    logger.info("=" * 60)
+    logger.info(f"Startup time: {datetime.now().isoformat()}")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Platform: {sys.platform}")
+    logger.info(f"Frozen (exe): {is_frozen()}")
+    if is_frozen():
+        logger.info(f"Executable: {sys.executable}")
+        logger.info(f"Bundle dir: {sys._MEIPASS}")
+    logger.info(f"Working directory: {os.getcwd()}")
+    logger.info(f"Log file: {log_file}")
+    logger.info(f"Mode: {'Simulation (TCP)' if args.simulate else 'USB'}")
+    logger.info(f"Verbose: {args.verbose}")
+    logger.info("-" * 60)
 
     server = UsbServer(simulate=args.simulate)
 
@@ -457,12 +613,21 @@ def main():
     print()
     print("Press Ctrl+C to stop the server")
     print()
+    print(f"Log file: {log_file}")
+    print()
 
     try:
         server.start()
     except KeyboardInterrupt:
         print("\nShutting down...")
+        logger.info("Server shutdown requested by user (Ctrl+C)")
         server.stop()
+    except Exception as e:
+        logger.exception(f"Unexpected error: {e}")
+        raise
+    finally:
+        logger.info("Server stopped")
+        logger.info("=" * 60)
 
 
 if __name__ == "__main__":

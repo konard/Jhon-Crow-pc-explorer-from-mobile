@@ -26,10 +26,40 @@ jobs:
         pip install pyinstaller
         pip install -r pc-server/requirements.txt
 
+    - name: Download libusb
+      run: |
+        # Download libusb 1.0.27 for Windows
+        $url = "https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.7z"
+        $output = "libusb.7z"
+        Invoke-WebRequest -Uri $url -OutFile $output
+
+        # Extract using 7zip (available on windows-latest)
+        7z x $output -olibusb
+
+        # Copy the 64-bit DLL to pc-server directory
+        Copy-Item "libusb\VS2022\MS64\dll\libusb-1.0.dll" -Destination "pc-server\libusb-1.0.dll"
+
+        # Verify the DLL exists
+        if (Test-Path "pc-server\libusb-1.0.dll") {
+          Write-Host "Successfully downloaded libusb-1.0.dll"
+          Get-Item "pc-server\libusb-1.0.dll"
+        } else {
+          Write-Error "Failed to download libusb-1.0.dll"
+          exit 1
+        }
+
     - name: Build portable exe
       run: |
         cd pc-server
-        pyinstaller --onefile --name pc-explorer-server --add-data "protocol.py;." --add-data "file_handler.py;." server.py
+        # Build with libusb DLL bundled
+        # --add-binary bundles the DLL into the exe
+        # --add-data bundles the Python modules
+        pyinstaller --onefile --name pc-explorer-server `
+          --add-binary "libusb-1.0.dll;." `
+          --add-data "protocol.py;." `
+          --add-data "file_handler.py;." `
+          --hidden-import=usb.backend.libusb1 `
+          server.py
 
     - name: Upload portable exe artifact
       uses: actions/upload-artifact@v4
