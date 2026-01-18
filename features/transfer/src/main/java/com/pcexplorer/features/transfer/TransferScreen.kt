@@ -227,10 +227,10 @@ private fun TransferCard(
             }
 
             // Error message
-            if (transfer.error != null) {
+            transfer.error?.let { errorMessage ->
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = transfer.error,
+                    text = errorMessage,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
