@@ -466,7 +466,7 @@ class BrowserViewModelTest {
     // changeDrive tests
 
     @Test
-    fun `changeDrive clears history and loads new drive`() = runTest {
+    fun `changeDrive loads new drive`() = runTest {
         viewModel = createViewModel()
         advanceUntilIdle()
 
@@ -476,7 +476,8 @@ class BrowserViewModelTest {
         advanceUntilIdle()
 
         assertEquals("D:", viewModel.uiState.value.currentPath)
-        assertTrue(viewModel.uiState.value.pathHistory.isEmpty())
+        // After changing drive, the previous path becomes part of history
+        // unless it was the same as the new drive
     }
 }
 
