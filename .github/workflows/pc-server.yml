@@ -58,6 +58,7 @@ jobs:
           --add-binary "libusb-1.0.dll;." `
           --add-data "protocol.py;." `
           --add-data "file_handler.py;." `
+          --add-data "adb_helper.py;." `
           --hidden-import=usb.backend.libusb1 `
           server.py
 

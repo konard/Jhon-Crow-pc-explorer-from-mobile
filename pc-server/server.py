@@ -40,7 +40,9 @@ from protocol import (
 from file_handler import FileHandler
 from adb_helper import (
     find_adb_executable, auto_setup_adb_forwarding,
-    list_devices, get_device_model, AdbConnection
+    list_devices, get_device_model, AdbConnection,
+    check_adb_device_ready, auto_setup_adb_reverse, remove_reverse_forward,
+    cleanup_adb_port
 )
 
 # Determine if running as frozen exe (PyInstaller)
@@ -211,6 +213,7 @@ class UsbServer:
 
         # For ADB mode
         self.adb_connection = None
+        self.adb_path = None  # Path to ADB executable when using ADB reverse mode
 
     def start(self) -> None:
         """Start the USB server."""
@@ -233,11 +236,13 @@ class UsbServer:
         adb_path = find_adb_executable()
         if adb_path:
             logger.info(f"Found ADB at: {adb_path}")
-            success, message = auto_setup_adb_forwarding(5555, 5555)
+            # Check if device is ready (don't set up forwarding yet)
+            success, message, self.adb_path = check_adb_device_ready(5555, 5555)
             if success:
-                logger.info(f"ADB setup successful: {message}")
+                logger.info(f"ADB device check: {message}")
                 self.mode = 'adb'
-                self._start_tcp_server()
+                # Start TCP server first, then set up reverse forwarding
+                self._start_tcp_server_with_adb_reverse()
                 return
             else:
                 logger.info(f"ADB setup failed: {message}")
@@ -459,15 +464,16 @@ class UsbServer:
         logger.info("USB driver error guidance printed to console")
 
     def _start_adb_mode(self) -> None:
-        """Start in ADB mode with automatic port forwarding."""
+        """Start in ADB mode with automatic reverse port forwarding."""
         logger.info("Starting in ADB mode")
 
-        # Set up ADB connection
-        success, message = auto_setup_adb_forwarding(5555, 5555)
+        # Check if device is ready (don't set up forwarding yet)
+        success, message, self.adb_path = check_adb_device_ready(5555, 5555)
 
         if success:
-            logger.info(f"ADB setup successful: {message}")
-            self._start_tcp_server()
+            logger.info(f"ADB device check: {message}")
+            # Start TCP server first, then set up reverse forwarding
+            self._start_tcp_server_with_adb_reverse()
         else:
             logger.error(f"ADB setup failed: {message}")
             logger.info("To use ADB mode:")
@@ -499,6 +505,105 @@ class UsbServer:
             except Exception as e:
                 logger.error(f"Connection error: {e}")
 
+    def _start_tcp_server_with_adb_reverse(self) -> None:
+        """
+        Start TCP server and set up ADB reverse forwarding.
+
+        This is the correct approach for ADB mode:
+        1. First, clean up any existing ADB forwards that may be blocking the port
+        2. Then, bind the TCP server to port 5555 on the PC
+        3. Finally, set up 'adb reverse' to forward phone's port 5555 to PC's port 5555
+        4. Android app connects to localhost:5555 on phone -> forwarded to PC server
+
+        This avoids the port conflict that occurs with 'adb forward', where ADB
+        also tries to bind to port 5555 on the PC.
+        """
+        import socket
+
+        logger.info("Starting TCP server on port 5555 (ADB reverse mode)")
+
+        # Step 0: Clean up any existing ADB port forwards that may be blocking port 5555
+        # This is important because if the user (or a previous server run) executed
+        # 'adb forward tcp:5555 tcp:5555', ADB will be listening on port 5555 and
+        # our server won't be able to bind to it
+        if self.adb_path:
+            logger.info("Checking for existing ADB port forwards...")
+            cleanup_adb_port(self.adb_path, 5555)
+
+        # Step 1: Create and bind the TCP server
+        try:
+            self.sim_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sim_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.sim_socket.bind(("127.0.0.1", 5555))
+            self.sim_socket.listen(1)
+            logger.info("TCP server bound to localhost:5555")
+        except OSError as e:
+            if e.errno == 10013 or "permission" in str(e).lower():
+                logger.error(f"Failed to bind to port 5555: {e}")
+                logger.error("Port 5555 is blocked or in use by another application")
+                self._print_port_conflict_guide()
+            else:
+                logger.error(f"Failed to bind to port 5555: {e}")
+            return
+
+        # Step 2: Set up ADB reverse forwarding
+        if self.adb_path:
+            success, message = auto_setup_adb_reverse(self.adb_path, 5555, 5555)
+            if success:
+                logger.info(f"ADB reverse forwarding: {message}")
+            else:
+                logger.warning(f"ADB reverse setup failed: {message}")
+                logger.info("Android app may need to connect via Wi-Fi instead")
+
+        logger.info("Waiting for Android app to connect...")
+        logger.info("On your phone, the app should connect to localhost:5555")
+
+        while self.running:
+            try:
+                self.sim_conn, addr = self.sim_socket.accept()
+                logger.info(f"Connection from {addr}")
+                self._handle_connection()
+            except Exception as e:
+                logger.error(f"Connection error: {e}")
+
+        # Cleanup: remove reverse forwarding when stopping
+        if self.adb_path:
+            try:
+                remove_reverse_forward(self.adb_path, 5555)
+            except Exception:
+                pass
+
+    def _print_port_conflict_guide(self) -> None:
+        """Print guidance when port 5555 is already in use."""
+        print()
+        print("=" * 60)
+        print("PORT 5555 CONFLICT DETECTED")
+        print("=" * 60)
+        print()
+        print("Port 5555 is already in use by another application.")
+        print("This commonly happens when:")
+        print("  - Another instance of this server is running")
+        print("  - ADB is using the port (from a previous 'adb forward' command)")
+        print("  - Another application is using port 5555")
+        print()
+        print("SOLUTIONS:")
+        print("-" * 40)
+        print("1. Close other instances of this server")
+        print()
+        print("2. Kill any existing ADB port forwards:")
+        print("   adb forward --remove-all")
+        print("   adb kill-server")
+        print()
+        print("3. Check what's using port 5555:")
+        print("   netstat -ano | findstr :5555  (Windows)")
+        print("   lsof -i :5555                 (Linux/Mac)")
+        print()
+        print("4. Try using a different port with --simulate mode")
+        print()
+        print("=" * 60)
+        print()
+        logger.info("Port conflict guidance printed to console")
+
     def stop(self) -> None:
         """Stop the USB server."""
         self.running = False
@@ -506,6 +611,13 @@ class UsbServer:
             self.sim_conn.close()
         if self.sim_socket:
             self.sim_socket.close()
+        # Clean up ADB reverse forwarding if it was set up
+        if self.adb_path:
+            try:
+                remove_reverse_forward(self.adb_path, 5555)
+                logger.info("Cleaned up ADB reverse forwarding")
+            except Exception:
+                pass
 
     def _start_simulation_mode(self) -> None:
         """Start in simulation mode using TCP socket (manual ADB setup required)."""
