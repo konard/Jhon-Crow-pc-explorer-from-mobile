@@ -7,6 +7,7 @@
 **Issue URL:** https://github.com/Jhon-Crow/pc-explorer-from-mobile/issues/12
 **Date Reported:** 2026-01-18
 **Reporter:** Jhon-Crow
+**Device:** Huawei (VendorID 0x12D1)
 
 ## Table of Contents
 
@@ -23,11 +24,19 @@
 
 ## Executive Summary
 
-The user reports that when pressing the "Connect" button on the Android app, nothing happens. Analysis of the provided PC server logs reveals that the PC server starts correctly and enters "Waiting for USB device..." state, but no Android device connection is detected.
+The user reports that when pressing the "Connect" button on the Android app, nothing happens. This case study tracks TWO PHASES of debugging:
 
-**Key Finding:** The problem is a fundamental architecture mismatch - the PC server expects to find an Android device already connected when it searches for USB devices, but the current implementation only looks for devices with Google's vendor ID (0x18D1). When the phone's "Connect" button is pressed, the Android app tries to connect to "the first available USB device" which may not be the PC server at all.
+### Phase 1: Device Not Detected (Original Issue)
+The PC server originally only searched for Google's vendor ID (0x18D1), missing the user's Huawei device (0x12D1).
 
-The core issue is that **the USB connection model is inverted** - the PC server acts as USB host looking for Android as a device, but Android USB Accessory mode requires the **external hardware (PC)** to act as the accessory while **Android acts as the device**.
+**Status:** ✅ FIXED - Multi-vendor support was added in commit 2ec999a.
+
+### Phase 2: Driver Incompatibility (New Issue Discovered)
+After the multi-vendor fix, a NEW error emerged: **"Operation not supported or unimplemented on this platform"**
+
+This is a **Windows USB driver issue** where libusb cannot claim the USB interface because the Huawei phone is using Windows' default MTP/PTP driver instead of WinUSB.
+
+**Status:** 🔴 NOT FIXED - Requires driver installation or alternative approach.
 
 ---
 
@@ -35,70 +44,91 @@ The core issue is that **the USB connection model is inverted** - the PC server 
 
 ### Log Files Provided
 
-| Log File | Timestamp | Duration | Outcome |
-|----------|-----------|----------|---------|
-| pc-explorer-server_20260118_082232.log | 08:22:32 | ~46 sec | Stuck waiting |
-| pc-explorer-server_20260118_082318.log | 08:23:18 | ~3 min 21 sec | Stuck waiting |
-| pc-explorer-server_20260118_082639.log | 08:26:39 | ~30 sec | Stuck waiting |
-| pc-explorer-server_20260118_082709.log | 08:27:09 | Unknown | Stuck waiting |
+| Log File | Timestamp | Server Version | Outcome |
+|----------|-----------|----------------|---------|
+| pc-explorer-server_20260118_082232.log | 08:22:32 | Original | Stuck waiting (no device found) |
+| pc-explorer-server_20260118_082318.log | 08:23:18 | Original | Stuck waiting (no device found) |
+| pc-explorer-server_20260118_082639.log | 08:26:39 | Original | Stuck waiting (no device found) |
+| pc-explorer-server_20260118_082709.log | 08:27:09 | Original | Stuck waiting (no device found) |
+| **pc-explorer-server_20260118_085249.log** | **08:52:49** | **With multi-vendor fix** | **Device found, driver error** |
 
-### Common Pattern in All Logs
+### Phase 1 Logs (08:22 - 08:27) - Original Server
 
-All four log files show identical behavior:
+All four initial log files show identical behavior:
 
 ```
 2026-01-18 08:22:32,498 - INFO - ============================================================
 2026-01-18 08:22:32,499 - INFO - PC Explorer USB Server - Starting
-2026-01-18 08:22:32,499 - INFO - ============================================================
-2026-01-18 08:22:32,500 - INFO - Startup time: 2026-01-18T08:22:32.500652
-2026-01-18 08:22:32,500 - INFO - Python version: 3.11.9 (...)
-2026-01-18 08:22:32,500 - INFO - Platform: win32
-2026-01-18 08:22:32,500 - INFO - Frozen (exe): True
-2026-01-18 08:22:32,501 - INFO - Executable: I:\Загрузки\Mobile to pc\pc-explorer-server.exe
-2026-01-18 08:22:32,501 - INFO - Bundle dir: C:\Users\Admin-1\AppData\Local\Temp\_MEI10362
-2026-01-18 08:22:32,501 - INFO - Working directory: I:\Загрузки\Mobile to pc
-2026-01-18 08:22:32,502 - INFO - Log file: I:\...\pc-explorer-server_20260118_082232.log
-2026-01-18 08:22:32,502 - INFO - Mode: USB
-2026-01-18 08:22:32,502 - INFO - Verbose: False
-2026-01-18 08:22:32,502 - INFO - ------------------------------------------------------------
+...
 2026-01-18 08:22:32,534 - INFO - Loaded libusb backend from: C:\...\libusb-1.0.dll
 2026-01-18 08:22:32,535 - INFO - Starting in USB mode
 2026-01-18 08:22:32,536 - INFO - Waiting for USB device...
 [LOG ENDS - No further entries]
 ```
 
+**Analysis:** The original server only looked for `idVendor=0x18D1` (Google), so the Huawei device was never found.
+
+### Phase 2 Log (08:52:49) - After Multi-Vendor Fix
+
+```
+2026-01-18 08:52:49,246 - INFO - ============================================================
+2026-01-18 08:52:49,247 - INFO - PC Explorer USB Server - Starting
+...
+2026-01-18 08:52:49,285 - INFO - Starting in USB mode
+2026-01-18 08:52:49,286 - INFO - Waiting for USB device...
+2026-01-18 08:52:49,381 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 08:52:49,382 - ERROR - USB error: Operation not supported or unimplemented on this platform
+2026-01-18 08:52:50,448 - INFO - Found Huawei device: VendorID=0x12D1, ProductID=0x107F
+2026-01-18 08:52:50,449 - ERROR - USB error: Operation not supported or unimplemented on this platform
+[Pattern repeats every ~1 second for 34+ attempts]
+```
+
+**Analysis:**
+- ✅ Multi-vendor detection is working (Huawei 0x12D1 found)
+- ❌ New error: "Operation not supported or unimplemented on this platform"
+- The error occurs when trying to `set_configuration()` on the USB device
+- This is libusb error code `-12` (LIBUSB_ERROR_NOT_SUPPORTED)
+
 ### Key Observations from Logs
 
-1. **Server Initialization Succeeds:**
+1. **Server Environment:**
    - Python version: 3.11.9 (64-bit)
    - Platform: Windows (win32)
    - Running as frozen PyInstaller executable
    - libusb backend loads successfully from bundled DLL
 
-2. **No USB Device Detected:**
-   - Server enters "Waiting for USB device..." loop
-   - No subsequent log entries indicating device discovery
-   - No errors logged
+2. **Device Information:**
+   - Vendor ID: 0x12D1 (Huawei)
+   - Product ID: 0x107F (indicates MTP/PTP mode, not ADB or Accessory mode)
 
-3. **Server Polls Forever:**
-   - The `usb.core.find(idVendor=0x18D1)` call returns `None`
-   - Server sleeps for 1 second and retries (infinite loop)
-   - No timeout or user feedback mechanism
+3. **Error Pattern:**
+   - Error is deterministic - happens every single attempt
+   - ~1 second retry interval
+   - Server never gives up, loops forever
 
 ---
 
 ## Timeline of Events
 
-Based on the log timestamps and gaps between logs:
+### Complete Timeline
 
-| Time | Event | Duration |
-|------|-------|----------|
-| 08:22:32 | First server start attempt | ~46 sec |
-| 08:23:18 | Second server start attempt | ~3 min 21 sec |
-| 08:26:39 | Third server start attempt | ~30 sec |
-| 08:27:09 | Fourth server start attempt | Unknown |
+| Time | Event | Result |
+|------|-------|--------|
+| 08:22:32 | First server start (original) | Stuck waiting - no device found |
+| 08:23:18 | Second server start (original) | Stuck waiting - no device found |
+| 08:26:39 | Third server start (original) | Stuck waiting - no device found |
+| 08:27:09 | Fourth server start (original) | Stuck waiting - no device found |
+| ~08:27-08:52 | *User downloads new server with multi-vendor fix* | - |
+| **08:52:49** | **Fifth server start (with fix)** | **Device found, driver error** |
+| 08:52:49 → 08:53:23 | 34+ connection attempts | All fail with driver error |
 
-**Interpretation:** The user attempted to start the server 4 times within approximately 5 minutes, restarting when nothing happened. This indicates frustration and trial-and-error debugging by the user.
+### Interpretation
+
+1. **First 5 minutes (08:22-08:27):** User tried the original server 4 times, each time it got stuck waiting for a device that would never be found (wrong vendor ID).
+
+2. **Gap (~25 minutes):** User likely downloaded the updated server with multi-vendor support.
+
+3. **08:52:49 onward:** New server correctly identifies the Huawei device, but fails at a later stage - the Windows USB driver prevents libusb from claiming the interface.
 
 ---
 
@@ -130,8 +160,8 @@ Based on the log timestamps and gaps between logs:
 ├─────────────────────────────────────────────────────────────────┤
 │  server.py (PyInstaller EXE)                                    │
 │    ├─ Setup libusb backend                                      │
-│    ├─ Poll: usb.core.find(idVendor=0x18D1) ← GOOGLE ONLY!      │
-│    ├─ Wait 1 second if not found                                │
+│    ├─ Poll: usb.core.find() with multiple vendor IDs ✅         │
+│    ├─ Try device.set_configuration() ← FAILS HERE ❌            │
 │    ├─ Configure device endpoints                                │
 │    └─ Handle incoming packets                                   │
 └─────────────────────────────────────────────────────────────────┘
@@ -148,48 +178,50 @@ The current architecture has a **fundamental USB mode confusion**:
 
 **Problem:** Both sides are trying to be the USB host!
 
-### What USB Accessory Mode Actually Requires
-
-According to [Android USB Accessory documentation](https://developer.android.com/develop/connectivity/usb/accessory):
-
-> "USB accessory mode allows users to connect USB host hardware specifically designed for Android-powered devices. The accessories must adhere to the Android accessory protocol. When an Android-powered device is in USB accessory mode, the attached Android USB accessory acts as the host, provides power to the USB bus, and enumerates connected devices."
-
-This means:
-1. The **PC** should implement the Android Open Accessory (AOA) protocol
-2. The **PC** sends control requests to put the Android device into accessory mode
-3. The **Android device** then becomes a USB device with product ID 0x2D00 or 0x2D01
-
 ---
 
 ## Root Cause Analysis
 
-### Root Cause #1: Vendor ID Mismatch (CRITICAL)
+### Root Cause #1: Vendor ID Mismatch (FIXED ✅)
 
-**PC Server Code (server.py:256):**
+**Original Problem:** PC Server only looked for Google's vendor ID (0x18D1).
+
+**Fix Applied:** Added support for 20+ Android vendor IDs including Huawei (0x12D1).
+
+**Current Status:** ✅ Fixed in commit 2ec999a
+
+### Root Cause #2: Windows USB Driver Incompatibility (NEW 🔴)
+
+**Error:** `Operation not supported or unimplemented on this platform`
+
+**Technical Details:**
+- libusb error code: `-12` (LIBUSB_ERROR_NOT_SUPPORTED)
+- Occurs when calling `device.set_configuration()` in `server.py:328`
+- The Huawei device (ProductID 0x107F) is in MTP/PTP mode
+- Windows uses its built-in MTP driver for this device
+- libusb **cannot claim interfaces from devices using non-WinUSB drivers**
+
+**Code Location (`server.py:323-328`):**
 ```python
-device = usb.core.find(idVendor=0x18D1)  # Google's vendor ID
+try:
+    # Detach kernel driver if necessary
+    if device.is_kernel_driver_active(0):  # Not applicable on Windows
+        device.detach_kernel_driver(0)
+
+    device.set_configuration()  # ← FAILS HERE
 ```
 
-**Problem:** This ONLY looks for devices with Google's vendor ID (0x18D1). Most Android phones have different vendor IDs based on manufacturer:
+**Why This Happens:**
+1. When an Android phone connects to Windows via USB cable, it typically appears in MTP (Media Transfer Protocol) mode
+2. Windows automatically assigns its built-in MTP driver to the device
+3. libusb can **enumerate** devices regardless of driver, but cannot **communicate** with them unless they use a libusb-compatible driver (WinUSB, libusb-win32, or libusbK)
+4. The `set_configuration()` call requires claiming the USB interface, which the Windows MTP driver won't allow
 
-| Manufacturer | Vendor ID (Hex) |
-|--------------|-----------------|
-| Samsung | 0x04E8 |
-| Xiaomi | 0x2717 |
-| Huawei | 0x12D1 |
-| OnePlus | 0x2A70 |
-| LG | 0x1004 |
-| Sony | 0x0FCE |
-| HTC | 0x0BB4 |
-| Google (Pixel) | 0x18D1 |
+### Root Cause #3: No AOA Protocol Implementation (CRITICAL 🔴)
 
-**Unless the user has a Google Pixel phone, the server will never find their device.**
+Even if the driver issue were resolved, the current implementation wouldn't work because:
 
-### Root Cause #2: No AOA Protocol Implementation (CRITICAL)
-
-The current implementation assumes both devices can directly communicate via bulk transfers. However, for USB connection between Android and PC:
-
-1. **Android as USB Host Mode:** Android uses `UsbManager` to connect to USB accessories (like USB drives, keyboards). This is what the current Android code does.
+1. **Android as USB Host Mode:** Android uses `UsbManager` to connect to USB accessories. This is what the current Android code does.
 
 2. **Android as USB Accessory Mode:** An external USB host (PC) sends special control requests to switch Android into accessory mode.
 
@@ -198,15 +230,14 @@ The current implementation assumes both devices can directly communicate via bul
 - PC code tries to be USB host
 - Neither implements AOA protocol handshake
 
-### Root Cause #3: Android Device List Empty at Connection Time
+### Root Cause #4: Android Device List Empty at Connection Time
 
-**Android Code (UsbConnectionRepositoryImpl.kt:113-121):**
+**Android Code (UsbConnectionRepositoryImpl.kt):**
 ```kotlin
 val deviceList = usbManager.deviceList
 if (deviceList.isEmpty()) {
     return Result.failure(Exception("No USB devices found"))
 }
-val device = deviceList.values.firstOrNull()
 ```
 
 **Problem:** `usbManager.deviceList` returns devices that Android can see as USB **host**. When connected to a PC via USB:
@@ -214,31 +245,40 @@ val device = deviceList.values.firstOrNull()
 - Android does NOT see the PC as a USB device in its device list
 - Therefore, `deviceList` is empty
 
-**This is why "nothing happens" - the Android app finds no USB devices to connect to.**
-
-### Root Cause #4: No User Feedback
-
-Neither the Android app nor the PC server provides meaningful feedback about:
-- Why the connection failed
-- What the user should do differently
-- Current connection state details
-
 ---
 
 ## Online Research Findings
 
-Based on web research about Android USB connectivity:
+### libusb Error Analysis
 
-### From [Android USB Accessory Overview](https://developer.android.com/develop/connectivity/usb/accessory)
+Based on research from multiple sources:
+
+#### From [PyUSB Issue #370](https://github.com/pyusb/pyusb/issues/370)
+
+> "composite_claim_interface] unsupported API call for 'claim_interface' (unrecognized device driver)"
+
+This occurs because:
+- The device interface is managed by Windows' default driver (MTP/CDC), not WinUSB
+- PyUSB's libusb backend cannot manage devices with incompatible drivers
+- The solution requires installing WinUSB driver for the device
+
+#### From [libusb Issue #445](https://github.com/libusb/libusb/issues/445)
+
+> "For USB composite devices, try to use Zadig to install the WinUSB to the USB composite parent"
+
+The recommended fix involves using the **Zadig** tool to replace Windows' default driver with WinUSB.
+
+#### From [Scrcpy Issue #3654](https://github.com/Genymobile/scrcpy/issues/3654)
+
+> "OTG mode works, except when it does not. Try without USB debugging enabled, or try on Linux."
+
+This confirms the issue is Windows-specific and related to driver conflicts.
+
+### Android USB Documentation
+
+From [Android USB Accessory Overview](https://developer.android.com/develop/connectivity/usb/accessory):
 
 > "USB accessory mode allows users to connect USB host hardware specifically designed for Android-powered devices."
-
-> "When an Android-powered device connects, it can be in one of three states:
-> - Supports Android accessory mode and is already in accessory mode
-> - Supports Android accessory mode but it is not in accessory mode
-> - Does not support Android accessory mode"
-
-### From [Android Open Accessory Protocol (AOA)](https://source.android.com/docs/core/interaction/accessories/aoa)
 
 The AOA protocol requires the USB host (PC) to:
 1. Send control request 51 (Get Protocol) to check AOA support
@@ -246,92 +286,123 @@ The AOA protocol requires the USB host (PC) to:
 3. Send control request 53 (Start Accessory) to switch Android to accessory mode
 4. Android device re-enumerates with product ID 0x2D00 or 0x2D01
 
-### From [ESP32 Forum Discussion on AOA](https://www.esp32.com/viewtopic.php?t=28400)
-
-> "AOA does not currently support simultaneous AOA and MTP connections. To switch from AOA to MTP, the accessory must first disconnect the USB device."
-
-This confirms that the PC must actively put the Android device into accessory mode.
-
 ### Sources
 
+- [PyUSB Issue #370 - Operation not supported](https://github.com/pyusb/pyusb/issues/370)
+- [libusb Issue #445 - LIBUSB_ERROR_NOT_SUPPORTED](https://github.com/libusb/libusb/issues/445)
+- [Scrcpy Issue #3654 - OTG on Windows](https://github.com/Genymobile/scrcpy/issues/3654)
 - [USB host and accessory overview | Android Developers](https://developer.android.com/develop/connectivity/usb)
 - [USB accessory overview | Android Developers](https://developer.android.com/develop/connectivity/usb/accessory)
-- [Android Open Accessory 1.0 | Android Open Source Project](https://source.android.com/docs/core/interaction/accessories/aoa)
-- [How to Change Android USB Settings [2025 Guide] - AirDroid](https://www.airdroid.com/mdm/android-usb-connection-settings/)
+- [Android Open Accessory 1.0 | AOSP](https://source.android.com/docs/core/interaction/accessories/aoa)
 
 ---
 
 ## Proposed Solutions
 
-### Solution 1: Use ADB-based Communication (Recommended)
+### Solution 1: Use ADB Port Forwarding (Recommended Workaround)
 
-Instead of raw USB, use ADB (Android Debug Bridge) which handles:
-- Device discovery
-- Permission management
-- Reliable data transfer
-- Works across all Android vendors
+Instead of raw USB, use ADB (Android Debug Bridge) for port forwarding:
 
 **Implementation:**
 1. User enables USB debugging on Android
-2. PC server uses ADB to forward TCP ports: `adb forward tcp:5555 tcp:5555`
-3. Android app listens on localhost:5555
-4. Communication happens over TCP socket (already implemented in simulation mode!)
+2. User runs: `adb forward tcp:5555 tcp:5555`
+3. PC server runs in simulation/TCP mode: `pc-explorer-server.exe --simulate`
+4. Communication happens over TCP socket (already implemented!)
 
 **Advantages:**
-- Works with all Android devices
-- No vendor ID issues
-- Reliable, well-tested protocol
-- Already partially implemented (simulation mode)
+- ✅ Works with all Android devices and all manufacturers
+- ✅ No driver installation required
+- ✅ No vendor ID issues
+- ✅ Reliable, well-tested protocol
+- ✅ Already implemented in simulation mode!
 
-### Solution 2: Implement Full AOA Protocol on PC
+**Disadvantages:**
+- ❌ Requires USB debugging enabled
+- ❌ Requires ADB installed on PC
+
+### Solution 2: Install WinUSB Driver via Zadig
+
+Use [Zadig](https://zadig.akeo.ie/) to replace the default Windows driver:
+
+**Steps:**
+1. Download Zadig from https://zadig.akeo.ie/
+2. Connect Android phone
+3. In Zadig, select the phone's USB interface
+4. Replace driver with WinUSB
+5. Run PC Explorer server
+
+**Advantages:**
+- ✅ Enables direct libusb communication
+- ✅ No code changes needed
+
+**Disadvantages:**
+- ❌ Requires manual driver installation
+- ❌ May break MTP file transfer functionality
+- ❌ Complex for non-technical users
+- ❌ Driver needs reinstalling after Windows updates
+
+### Solution 3: Implement AOA Protocol
 
 Make the PC server implement Android Open Accessory protocol:
 
-1. Scan for any Android device (check multiple vendor IDs)
+1. Detect Android device in any USB mode
 2. Send AOA control requests to switch device to accessory mode
-3. Wait for device re-enumeration with accessory product ID
+3. Wait for device re-enumeration with accessory product ID (0x2D00/0x2D01)
 4. Then communicate via bulk transfers
 
-**Implementation Complexity:** High - requires significant changes to both PC and Android code.
+**Implementation Complexity:** Very High - requires significant changes to both PC and Android code.
 
-### Solution 3: Wi-Fi Based Communication
+### Solution 4: Wi-Fi Based Communication
 
 Use local network instead of USB:
+
 1. Both devices connect to same Wi-Fi network
 2. PC server broadcasts presence via mDNS/Bonjour
 3. Android app discovers PC server
 4. Communication over TCP socket
 
 **Advantages:**
-- No USB complexity
-- Works wirelessly
-- Easier to implement
+- ✅ No USB complexity
+- ✅ Works wirelessly
+- ✅ No driver issues
 
 **Disadvantages:**
-- Requires same network
-- Potential firewall issues
-
-### Solution 4: Fix Current USB Implementation (Short-term)
-
-Minimum fixes to make current implementation work:
-
-1. **PC Server:** Support multiple vendor IDs, not just Google
-2. **Android App:** Add better error messages and device scanning UI
-3. **Both:** Add connection status indicators and troubleshooting guidance
+- ❌ Requires same network
+- ❌ Potential firewall issues
+- ❌ Needs new discovery mechanism
 
 ---
 
 ## Conclusion
 
-The "nothing happens when pressing connect" issue stems from a fundamental architecture problem: **both the Android app and PC server are trying to act as USB hosts**, which cannot work.
+### Summary of Issues
 
-Additionally, the PC server only looks for Google-branded devices, ignoring most Android phones.
+| Issue | Status | Solution |
+|-------|--------|----------|
+| Vendor ID mismatch (Google only) | ✅ Fixed | Multi-vendor support added |
+| Windows driver incompatibility | 🔴 Open | Use ADB or install WinUSB |
+| USB architecture mismatch | 🔴 Open | Fundamental redesign needed |
+| No user feedback | 🟡 Partial | Improved logging added |
 
-**Recommended Immediate Action:** Enable and document the existing TCP simulation mode as the primary connection method, using ADB for port forwarding. This is already implemented and works reliably.
+### Recommended Immediate Action
 
-**Long-term Recommendation:** Either:
-1. Implement proper AOA protocol on the PC side, or
-2. Add Wi-Fi based discovery and communication
+**Use simulation mode with ADB port forwarding:**
+
+```bash
+# On PC (with ADB installed)
+adb forward tcp:5555 tcp:5555
+
+# Run server in simulation mode
+pc-explorer-server.exe --simulate
+```
+
+This is already implemented, bypasses all USB driver issues, and works reliably with any Android device.
+
+### Long-term Recommendations
+
+1. **Document the ADB method** as the primary connection method
+2. **Consider Wi-Fi discovery** as an alternative
+3. **If USB is required:** Implement proper AOA protocol or provide Zadig instructions
 
 ---
 
@@ -348,8 +419,9 @@ Additionally, the PC server only looks for Google-branded devices, ignoring most
 - `features/connection/src/main/java/com/pcexplorer/features/connection/ConnectionViewModel.kt` - UI state management
 - `app/src/main/res/xml/usb_device_filter.xml` - USB device filter
 
-### Logs
-- `docs/case-studies/issue-12/logs/pc-explorer-server_20260118_082232.log`
-- `docs/case-studies/issue-12/logs/pc-explorer-server_20260118_082318.log`
-- `docs/case-studies/issue-12/logs/pc-explorer-server_20260118_082639.log`
-- `docs/case-studies/issue-12/logs/pc-explorer-server_20260118_082709.log`
+### Logs (in `docs/case-studies/issue-12/logs/`)
+- `pc-explorer-server_20260118_082232.log` - First attempt (original server)
+- `pc-explorer-server_20260118_082318.log` - Second attempt (original server)
+- `pc-explorer-server_20260118_082639.log` - Third attempt (original server)
+- `pc-explorer-server_20260118_082709.log` - Fourth attempt (original server)
+- `pc-explorer-server_20260118_085249.log` - **Fifth attempt (with multi-vendor fix)** - Shows new driver error
