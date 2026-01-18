@@ -43,7 +43,8 @@ class ResultExtensionsTest {
         val returned = result.onError { capturedError = it }
 
         assertEquals(exception, capturedError)
-        assertSame(result, returned)
+        // Result is a value class, so we compare by value instead of reference
+        assertEquals(result, returned)
     }
 
     @Test
