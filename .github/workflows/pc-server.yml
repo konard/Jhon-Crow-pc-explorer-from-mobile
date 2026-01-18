@@ -54,7 +54,7 @@ jobs:
         # Build with libusb DLL bundled
         # --add-binary bundles the DLL into the exe
         # --add-data bundles the Python modules
-pyinstaller --onefile --name pc-explorer-server `
+        pyinstaller --onefile --name pc-explorer-server `
           --add-binary "libusb-1.0.dll;." `
           --add-data "protocol.py;." `
           --add-data "file_handler.py;." `
