@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import com.pcexplorer.core.domain.model.ConnectionMode
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -35,9 +36,12 @@ class SettingsViewModelTest {
         editor = mockk(relaxed = true)
         sharedPreferences = mockk {
             every { getString("theme_mode", any()) } returns ThemeMode.SYSTEM.name
+            every { getString("connection_mode", any()) } returns ConnectionMode.TCP_ADB.name
+            every { getString("wifi_host", any()) } returns "192.168.1.100"
             every { getBoolean("auto_connect", any()) } returns true
             every { getInt("buffer_size_kb", any()) } returns 32
             every { getInt("parallel_transfers", any()) } returns 2
+            every { getInt("wifi_port", any()) } returns 5555
             every { edit() } returns editor
         }
         every { editor.putString(any(), any()) } returns editor
@@ -83,13 +87,19 @@ class SettingsViewModelTest {
     @Test
     fun `loads custom values from SharedPreferences`() = runTest {
         every { sharedPreferences.getString("theme_mode", any()) } returns ThemeMode.DARK.name
+        every { sharedPreferences.getString("connection_mode", any()) } returns ConnectionMode.TCP_WIFI.name
+        every { sharedPreferences.getString("wifi_host", any()) } returns "10.0.0.5"
         every { sharedPreferences.getBoolean("auto_connect", any()) } returns false
         every { sharedPreferences.getInt("buffer_size_kb", any()) } returns 64
         every { sharedPreferences.getInt("parallel_transfers", any()) } returns 4
+        every { sharedPreferences.getInt("wifi_port", any()) } returns 8080
 
         val vm = SettingsViewModel(context)
 
         assertEquals(ThemeMode.DARK, vm.uiState.value.themeMode)
+        assertEquals(ConnectionMode.TCP_WIFI, vm.uiState.value.connectionMode)
+        assertEquals("10.0.0.5", vm.uiState.value.wifiHost)
+        assertEquals(8080, vm.uiState.value.wifiPort)
         assertFalse(vm.uiState.value.autoConnect)
         assertEquals(64, vm.uiState.value.bufferSizeKb)
         assertEquals(4, vm.uiState.value.parallelTransfers)
@@ -209,6 +219,67 @@ class SettingsViewModelTest {
         }
     }
 
+    // setConnectionMode tests
+
+    @Test
+    fun `setConnectionMode updates state`() = runTest {
+        viewModel.setConnectionMode(ConnectionMode.TCP_WIFI)
+
+        assertEquals(ConnectionMode.TCP_WIFI, viewModel.uiState.value.connectionMode)
+    }
+
+    @Test
+    fun `setConnectionMode saves to SharedPreferences`() = runTest {
+        viewModel.setConnectionMode(ConnectionMode.USB)
+
+        verify { editor.putString("connection_mode", ConnectionMode.USB.name) }
+        verify { editor.apply() }
+    }
+
+    @Test
+    fun `setConnectionMode various modes`() = runTest {
+        val modes = listOf(ConnectionMode.USB, ConnectionMode.TCP_ADB, ConnectionMode.TCP_WIFI, ConnectionMode.AUTO)
+
+        modes.forEach { mode ->
+            viewModel.setConnectionMode(mode)
+            assertEquals(mode, viewModel.uiState.value.connectionMode)
+        }
+    }
+
+    // setWifiHost tests
+
+    @Test
+    fun `setWifiHost updates state`() = runTest {
+        viewModel.setWifiHost("10.0.0.5")
+
+        assertEquals("10.0.0.5", viewModel.uiState.value.wifiHost)
+    }
+
+    @Test
+    fun `setWifiHost saves to SharedPreferences`() = runTest {
+        viewModel.setWifiHost("192.168.0.50")
+
+        verify { editor.putString("wifi_host", "192.168.0.50") }
+        verify { editor.apply() }
+    }
+
+    // setWifiPort tests
+
+    @Test
+    fun `setWifiPort updates state`() = runTest {
+        viewModel.setWifiPort(8080)
+
+        assertEquals(8080, viewModel.uiState.value.wifiPort)
+    }
+
+    @Test
+    fun `setWifiPort saves to SharedPreferences`() = runTest {
+        viewModel.setWifiPort(9999)
+
+        verify { editor.putInt("wifi_port", 9999) }
+        verify { editor.apply() }
+    }
+
     // Integration tests
 
     @Test
@@ -255,6 +326,9 @@ class SettingsUiStateTest {
         val state = SettingsUiState()
 
         assertEquals(ThemeMode.SYSTEM, state.themeMode)
+        assertEquals(ConnectionMode.TCP_ADB, state.connectionMode)
+        assertEquals("192.168.1.100", state.wifiHost)
+        assertEquals(5555, state.wifiPort)
         assertTrue(state.autoConnect)
         assertEquals(32, state.bufferSizeKb)
         assertEquals(2, state.parallelTransfers)
@@ -265,6 +339,9 @@ class SettingsUiStateTest {
     fun `SettingsUiState with custom values`() {
         val state = SettingsUiState(
             themeMode = ThemeMode.DARK,
+            connectionMode = ConnectionMode.TCP_WIFI,
+            wifiHost = "10.0.0.1",
+            wifiPort = 8080,
             autoConnect = false,
             bufferSizeKb = 128,
             parallelTransfers = 4,
@@ -272,6 +349,9 @@ class SettingsUiStateTest {
         )
 
         assertEquals(ThemeMode.DARK, state.themeMode)
+        assertEquals(ConnectionMode.TCP_WIFI, state.connectionMode)
+        assertEquals("10.0.0.1", state.wifiHost)
+        assertEquals(8080, state.wifiPort)
         assertFalse(state.autoConnect)
         assertEquals(128, state.bufferSizeKb)
         assertEquals(4, state.parallelTransfers)
@@ -286,6 +366,7 @@ class SettingsUiStateTest {
         assertEquals(ThemeMode.LIGHT, modified.themeMode)
         assertEquals(64, modified.bufferSizeKb)
         // Other values unchanged
+        assertEquals(ConnectionMode.TCP_ADB, modified.connectionMode)
         assertTrue(modified.autoConnect)
         assertEquals(2, modified.parallelTransfers)
     }

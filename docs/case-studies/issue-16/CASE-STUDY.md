@@ -330,5 +330,39 @@ Until the Android app is updated with TCP socket support:
 
 ---
 
+## Addendum: Test Failure Analysis (2026-01-18)
+
+### CI Build Failure
+
+After implementing the TCP socket connection support (PR #17), CI tests failed with 17 failures in `SettingsViewModelTest`.
+
+**Error:** `io.mockk.MockKException at SettingsViewModelTest.kt:60`
+
+**Root Cause:** The `SettingsViewModel` was updated to include new connection mode settings (`connectionMode`, `wifiHost`, `wifiPort`), but the test mocks were not updated to include these new SharedPreferences keys.
+
+### Missing Mocks
+
+The test setup was missing mocks for:
+1. `getString("connection_mode", any())` - Connection mode preference
+2. `getString("wifi_host", any())` - Wi-Fi host preference
+3. `getInt("wifi_port", any())` - Wi-Fi port preference
+
+### Fix Applied
+
+Updated `SettingsViewModelTest.kt` to:
+1. Import `ConnectionMode` from core domain
+2. Add missing SharedPreferences mocks in setUp()
+3. Update `SettingsUiState` tests to include new fields
+4. Add new tests for `setConnectionMode()`, `setWifiHost()`, and `setWifiPort()`
+
+### Log Files
+
+- CI build log: https://github.com/Jhon-Crow/pc-explorer-from-mobile/actions/runs/21109372681/job/60705639325
+- `logs/pc-explorer-server_20260118_115535.log` - Server log from original issue report
+- `logs/pc-explorer-server_20260118_115644.log` - Server log from original issue report
+
+---
+
 *Case study compiled on 2026-01-18*
-*Related to Issue #14 and PR #15*
+*Updated with test failure analysis on 2026-01-18*
+*Related to Issue #14, PR #15, and PR #17*
