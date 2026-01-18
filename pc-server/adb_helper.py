@@ -207,6 +207,75 @@ def setup_port_forward(adb_path: Path, local_port: int = 5555, remote_port: int 
         return False
 
 
+def setup_reverse_forward(adb_path: Path, remote_port: int = 5555, local_port: int = 5555) -> bool:
+    """
+    Set up TCP reverse forwarding from Android device to PC.
+
+    This creates a tunnel so that connections to localhost:remote_port on the
+    Android device are forwarded to localhost:local_port on the PC.
+
+    This is the preferred method for ADB mode because:
+    - The PC server binds to local_port first
+    - Then adb reverse makes the phone's remote_port forward to PC's local_port
+    - This avoids port conflicts (unlike adb forward, which also binds to the port)
+
+    Args:
+        adb_path: Path to the ADB executable.
+        remote_port: Port on the Android device to listen on.
+        local_port: Port on the PC to forward to.
+
+    Returns:
+        True if reverse forwarding was set up successfully, False otherwise.
+    """
+    # First, check if there are any devices
+    devices = list_devices(adb_path)
+    if not devices:
+        logger.warning("No Android devices connected for reverse forwarding")
+        return False
+
+    # Filter for devices that are ready (state == 'device')
+    ready_devices = [d for d in devices if d['state'] == 'device']
+    if not ready_devices:
+        logger.warning(f"No devices ready for reverse forwarding. Device states: {devices}")
+        return False
+
+    # Set up reverse forward
+    success, stdout, stderr = run_adb_command(
+        adb_path,
+        ['reverse', f'tcp:{remote_port}', f'tcp:{local_port}'],
+        timeout=10
+    )
+
+    if success:
+        logger.info(f"ADB reverse forwarding set up: device:{remote_port} -> localhost:{local_port}")
+        return True
+    else:
+        logger.warning(f"Failed to set up reverse forwarding: {stderr}")
+        return False
+
+
+def remove_reverse_forward(adb_path: Path, remote_port: int = 5555) -> bool:
+    """
+    Remove a previously set up reverse forwarding.
+
+    Args:
+        adb_path: Path to the ADB executable.
+        remote_port: The remote port to remove forwarding from.
+
+    Returns:
+        True if forwarding was removed, False otherwise.
+    """
+    success, stdout, stderr = run_adb_command(
+        adb_path,
+        ['reverse', '--remove', f'tcp:{remote_port}'],
+        timeout=10
+    )
+
+    if success:
+        logger.info(f"Removed reverse forwarding on device port {remote_port}")
+    return success
+
+
 def remove_port_forward(adb_path: Path, local_port: int = 5555) -> bool:
     """
     Remove a previously set up port forwarding.
@@ -339,15 +408,97 @@ class AdbConnection:
             self.is_connected = False
 
 
+def check_adb_device_ready(local_port: int = 5555, remote_port: int = 5555) -> Tuple[bool, str, Optional[Path]]:
+    """
+    Check if ADB is available and a device is ready for connection.
+
+    This function does NOT set up port forwarding - it only checks readiness.
+    Use this to verify ADB is available before starting the TCP server.
+
+    Args:
+        local_port: Local port on PC (for informational purposes).
+        remote_port: Remote port on Android device (for informational purposes).
+
+    Returns:
+        Tuple of (success, message, adb_path)
+    """
+    # Find ADB
+    adb_path = find_adb_executable()
+    if not adb_path:
+        return False, "ADB not found. Please install Android SDK Platform Tools.", None
+
+    logger.info(f"Using ADB: {adb_path}")
+
+    # Start ADB server
+    if not check_adb_server(adb_path):
+        return False, "Failed to start ADB server.", adb_path
+
+    # Check for devices
+    devices = list_devices(adb_path)
+    if not devices:
+        return False, "No Android devices found. Connect your device and enable USB debugging.", adb_path
+
+    ready_devices = [d for d in devices if d['state'] == 'device']
+    if not ready_devices:
+        unauthorized = [d for d in devices if d['state'] == 'unauthorized']
+        if unauthorized:
+            return False, "Device connected but not authorized. Check your phone for USB debugging prompt.", adb_path
+        return False, f"Device not ready. Current states: {devices}", adb_path
+
+    # Get device info
+    device_model = get_device_model(adb_path, ready_devices[0]['serial'])
+    device_info = device_model or ready_devices[0]['serial']
+
+    return True, f"Device ready: {device_info}", adb_path
+
+
+def auto_setup_adb_reverse(adb_path: Path, local_port: int = 5555, remote_port: int = 5555) -> Tuple[bool, str]:
+    """
+    Set up ADB reverse forwarding after the TCP server is already listening.
+
+    This should be called AFTER the TCP server has bound to local_port.
+    It sets up reverse forwarding so the Android device's remote_port
+    forwards to the PC's local_port.
+
+    Args:
+        adb_path: Path to the ADB executable.
+        local_port: Local port on PC (server is listening on this).
+        remote_port: Remote port on Android device.
+
+    Returns:
+        Tuple of (success, message)
+    """
+    # Check for devices (they should still be connected)
+    devices = list_devices(adb_path)
+    ready_devices = [d for d in devices if d['state'] == 'device']
+
+    if not ready_devices:
+        return False, "Device disconnected. Please reconnect and try again."
+
+    # Get device info
+    device_model = get_device_model(adb_path, ready_devices[0]['serial'])
+    device_info = device_model or ready_devices[0]['serial']
+
+    # Set up reverse forwarding
+    if setup_reverse_forward(adb_path, remote_port, local_port):
+        return True, f"ADB reverse forwarding ready for {device_info}"
+
+    return False, "Failed to set up reverse forwarding."
+
+
 def auto_setup_adb_forwarding(local_port: int = 5555, remote_port: int = 5555) -> Tuple[bool, str]:
     """
     Automatically set up ADB port forwarding if possible.
 
-    This is a convenience function that:
-    1. Finds ADB executable
-    2. Starts ADB server
-    3. Checks for connected devices
-    4. Sets up port forwarding
+    NOTE: This function uses 'adb forward' which causes port conflicts!
+    The PC server cannot bind to the same port that ADB forward uses.
+
+    For new code, use check_adb_device_ready() + auto_setup_adb_reverse() instead:
+    1. Call check_adb_device_ready() to verify device is connected
+    2. Start TCP server on local_port
+    3. Call auto_setup_adb_reverse() to set up reverse forwarding
+
+    This function is kept for backwards compatibility but is deprecated.
 
     Args:
         local_port: Local port on PC.
